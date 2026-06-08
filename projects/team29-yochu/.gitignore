@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual Environment
+.venv/
+
+# Environment Variables
+.env
+
+# Test outputs
+test_outputs/
+agent1_detection_poc/
+runtime_outputs/
+notebooks
+
+# IDE
+.idea/
+
+# Info
+team_info.pdf
