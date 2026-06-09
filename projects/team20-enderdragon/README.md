@@ -38,7 +38,7 @@ bash start.sh                 # 백엔드 :8001, 웹뷰 :8002
 cd minecraft-mod && ./gradlew runClient
 ```
 
-월드에 들어간 뒤 채팅에 `/coach <질문>`을 치거나, **K**로 코치 창, **J**로 할 일 목록을 열 수 있습니다. 물어볼 때 지금 인벤토리를 같이 보내서, 가진 아이템에 맞춰 답해줍니다.
+월드에 들어간 뒤 채팅에 `/coach <질문>`을 치거나, **K**로 코치 창, **J**로 할 일 목록을 열 수 있습니다. 물어볼 때 지금 인벤토리와 게임 상태(시간·체력)를 같이 보내서, 상황에 맞춰 답해줍니다.
 
 <p align="center">
   <img src="docs/img/마크_게임_채팅.png" alt="게임 채팅으로 코치 부르기" width="640"><br>
@@ -60,51 +60,49 @@ cd minecraft-mod && ./gradlew runClient
 
 ## 🛠️ [어떻게 만들었나](docs/기술_문서.md)
 
-- **에이전트 흐름** — 사용자 질문은 LangGraph를 따라 `분석 → 되묻기 → 검색 → 답변` 순으로 흐릅니다(현재 5노드).
-- **검색(RAG)** — 답변 근거는 마인크래프트 위키에서 검색해 가져옵니다(Qdrant + Upstage 임베딩).
-- **환각 방지** — 채굴 티어나 레시피처럼 틀리면 안 되는 건 "확정 사실"로 박아놔서 LLM이 지어내지 못하게 막았어요. 실제로 #7에서 겪었던 문제라 이렇게 풀었습니다.
-- **저장** — 대화 기록은 MySQL에 저장하고, 스키마는 Alembic으로 관리합니다.
-- **게임 연동** — 게임 모드는 인벤토리를 읽어 같이 넘기고, 받은 답변을 할 일 목록 HUD로 보여줍니다.
+- **에이전트 흐름** — 질문은 LangGraph **11노드**를 따라 `진척도 로드 → 분석 → 목표 해석 → 되묻기 → 검색 → 재료 점검 → 진행 인식 → 답변 → 저장` 순으로 흐릅니다.
+- **결정론 제작 엔진** — "철 주괴 3개"·3×3 배치 같은 수치는 게임에서 추출한 레시피로 계산합니다(부족 재료·채굴 티어까지). LLM 추측이 아니라서 안 틀려요(#7).
+- **검색(RAG) + 웹검색** — 답변 근거는 마인크래프트 위키에서 가져오고(Qdrant), 부족하면 **키 없이 마크 위키 API**로 보강합니다.
+- **멀티턴 기억** — 직전 계획 대비 무엇을 끝냈고 이제 무엇을 할 차례인지 기억합니다(MySQL `coaching_state`).
+- **게임 연동** — 모드는 인벤토리·게임 상태(시간·체력)를 같이 넘기고, 답변은 **토큰 단위로 흐르며** 3×3 제작법 격자·할 일 HUD로 보여줍니다.
 
 더 자세한 내용(아키텍처, API, 이슈별 작업 내역)은 [기술 문서](docs/기술_문서.md)에 정리해뒀습니다.
 
 ## 🧭 아키텍처랑 에이전트 흐름
 
-웹뷰와 Fabric 모드가 FastAPI를 거쳐 LangGraph로 들어가고, 그 뒤에 MySQL(세션), Qdrant(RAG), LLM/Vision API가 붙습니다.
+### 아키텍처
+
+웹뷰와 Fabric 모드가 FastAPI를 거쳐 LangGraph로 들어가고, 그 뒤에 MySQL(세션·진척도), Qdrant(RAG), 결정론 지식(레시피·확정 사실), 마크 위키 API(웹검색 폴백), Upstage Solar(LLM·임베딩)가 붙습니다.
 
 <p align="center">
-  <img src="docs/img/01-시스템-아키텍처.png" alt="시스템 아키텍처" width="720">
+  <img src="docs/img/아키텍처.png" alt="시스템 아키텍처" width="860">
 </p>
 
-에이전트는 목표를 분석하고 현재 상태를 모은 다음, 정보가 충분한지 따져보고 상태를 해석합니다.
 
-<p align="center">
-  <img src="docs/img/02-에이전트-흐름-전반부.png" alt="에이전트 흐름 전반부" width="600">
-</p>
+### 에이전틱 워크플로우
 
-그다음 선행조건과 부족한 자원을 계산해서 하위 목표와 실행 계획을 세우고, 실행이 가능한지 확인한 뒤 코칭 답변을 내고 상태를 저장합니다.
-
-<p align="center">
-  <img src="docs/img/03-에이전트-흐름-후반부.png" alt="에이전트 흐름 후반부" width="480">
-</p>
-
-참고로 위 11노드는 처음에 잡았던 최종 목표고, 지금 실제로 돌아가는 건 5노드(`analyze → clarify →(ask) → retrieve → respond`)입니다. 차이는 [기술 문서](docs/기술_문서.md)에 적어뒀어요.
+<table align="center">
+  <tr>
+    <td align="center" valign="top"><img src="docs/img/에이전틱-워크플로우-세로.png" alt="에이전틱 워크플로우" width="470"><br><sub>코칭 워크플로우 — 노드별 역할 개요</sub></td>
+    <td align="center" valign="top"><img src="docs/img/랭그래프-그래프.png" alt="LangGraph 그래프" width="240"><br><sub>실제 그래프</sub></td>
+  </tr>
+</table>
 
 ---
 
 ## 📚 문서
 
-| 문서 | 내용 |
-| --- | --- |
-| [백엔드 사용법](docs/백엔드_사용법.md) | 백엔드(FastAPI) 클론부터 로컬 실행까지 (팀원 온보딩) |
-| [웹뷰 사용법](docs/웹뷰_사용법.md) | Streamlit 검증용 웹뷰 쓰는 법 |
-| [인게임 사용법](docs/인게임_사용법.md) | Fabric 모드 인게임에서 쓰는 법 |
-| [기술 문서](docs/기술_문서.md) | 사용 기술과 적용 방법 (아키텍처, 워크플로우, RAG, DB, 이슈 매핑) |
-| [스펙 문서](docs/스펙문서.md) | 제품 설계, 범위, 협업 모델 |
-| [구현 계획](docs/구현계획/) | 이슈별 구현 절차와 커밋 분해 (#5, #7) |
-| [알려진 이슈](docs/알려진_이슈.md) | 응답 품질 이슈 로그와 해결 기록 |
-| [project_code/README](project_code/README.md) | 백엔드·웹뷰 내부 구조와 코드 |
-| [minecraft-mod/README](minecraft-mod/README.md) | 인게임 Fabric 모드 빌드와 구조 |
+| 문서                                            | 내용                                                             |
+| ----------------------------------------------- | ---------------------------------------------------------------- |
+| [백엔드 사용법](docs/백엔드_사용법.md)          | 백엔드(FastAPI) 클론부터 로컬 실행까지 (팀원 온보딩)             |
+| [웹뷰 사용법](docs/웹뷰_사용법.md)              | Streamlit 검증용 웹뷰 쓰는 법                                    |
+| [인게임 사용법](docs/인게임_사용법.md)          | Fabric 모드 인게임에서 쓰는 법                                   |
+| [기술 문서](docs/기술_문서.md)                  | 사용 기술과 적용 방법 (아키텍처, 워크플로우, RAG, DB, 이슈 매핑) |
+| [스펙 문서](docs/스펙문서.md)                   | 제품 설계, 범위, 협업 모델                                       |
+| [구현 계획](docs/구현계획/)                     | 이슈별 구현 절차와 커밋 분해 (#5, #7)                            |
+| [알려진 이슈](docs/알려진_이슈.md)              | 응답 품질 이슈 로그와 해결 기록                                  |
+| [project_code/README](project_code/README.md)   | 백엔드·웹뷰 내부 구조와 코드                                     |
+| [minecraft-mod/README](minecraft-mod/README.md) | 인게임 Fabric 모드 빌드와 구조                                   |
 
 ## 📂 폴더 구조
 
@@ -114,18 +112,18 @@ asm-team20-ai-study/
 │
 ├── project_code/         백엔드(FastAPI·LangGraph) + 검증용 웹뷰
 │   ├── app/
-│   │   ├── agents/         LangGraph 노드 (분석·되묻기·검색·답변)
-│   │   ├── knowledge/      환각 방지용 확정 사실 (채굴 티어·레시피)
+│   │   ├── agents/         LangGraph 노드 (분석·목표해석·검색·웹검색·재료점검·진행인식·응답·진척도)
+│   │   ├── knowledge/      결정론 지식 (추출 레시피·플래너 + 확정 사실)
 │   │   ├── core/           설정·DB·임베딩·LLM 연결
-│   │   └── ...             graph·api·models·repositories 등
+│   │   └── ...             graph·api·models·repositories·web_search 등
 │   ├── frontend/          Streamlit 웹뷰
-│   ├── scripts/           위키 → Qdrant 적재
+│   ├── scripts/           위키 적재 · 레시피 추출
 │   └── alembic/ · tests/  마이그레이션 · 테스트
 │
 └── minecraft-mod/        인게임 Fabric 모드 (실제 메인 클라이언트)
     └── src/.../coach/
-        ├── api/             백엔드 호출 · 인벤토리 캡처
-        ├── gui/             코치 창 · 할 일 목록 · HUD
+        ├── api/             백엔드 호출 · 인벤토리·게임상태 캡처
+        ├── gui/             코치 창(스트리밍) · 3×3 격자 · 할 일 HUD
         └── config/          백엔드 주소·세션
 ```
 
