@@ -39,16 +39,19 @@ class BriefingService:
         )
         filtered_articles = self._filter_articles(raw_articles, request.topics, custom_keywords, exclude_keywords)
         deduped_articles = self._dedupe_articles(filtered_articles)
-        ranked_articles = self._rank_articles(deduped_articles, request.topics, custom_keywords)[: request.limit]
-        stats = self._stats(
-            request=request,
-            fetch_report=fetch_report,
-            matched_count=len(filtered_articles),
-            deduped_count=len(deduped_articles),
-            selected_count=len(ranked_articles),
-        )
+        ranked_articles = self._rank_articles(deduped_articles, request.topics, custom_keywords)
+        candidate_articles = ranked_articles[: self._candidate_limit(request.limit)]
 
-        if not ranked_articles:
+        if not candidate_articles:
+            stats = self._stats(
+                request=request,
+                fetch_report=fetch_report,
+                matched_count=len(filtered_articles),
+                deduped_count=len(deduped_articles),
+                candidate_count=0,
+                selected_count=0,
+                selector_used=False,
+            )
             return Briefing(
                 title="관련 뉴스가 없습니다",
                 generated_at=datetime.now(),
@@ -66,7 +69,16 @@ class BriefingService:
 
         focus_labels = self._focus_labels(request, custom_keywords)
         summarized, common_topics, summary_notices = self.summarizer.summarize(
-            ranked_articles, focus_labels
+            candidate_articles, focus_labels, limit=request.limit
+        )
+        stats = self._stats(
+            request=request,
+            fetch_report=fetch_report,
+            matched_count=len(filtered_articles),
+            deduped_count=len(deduped_articles),
+            candidate_count=len(candidate_articles),
+            selected_count=len(summarized),
+            selector_used=any(article.agent_selected for article in summarized),
         )
         briefing = Briefing(
             title=self._briefing_title(request),
@@ -201,6 +213,9 @@ class BriefingService:
             reverse=True,
         )
 
+    def _candidate_limit(self, requested_limit: int) -> int:
+        return min(30, max(requested_limit * 4, 20))
+
     def _score_article(self, article: Article, topics: list[str], custom_keywords: list[str]) -> Article:
         keywords = [keyword.lower() for keyword in self._effective_keywords(topics, custom_keywords)]
         title = article.title.lower()
@@ -245,14 +260,18 @@ class BriefingService:
         fetch_report: FetchReport,
         matched_count: int,
         deduped_count: int,
+        candidate_count: int,
         selected_count: int,
+        selector_used: bool,
     ) -> BriefingStats:
         return BriefingStats(
             source_count=len(request.sources),
             collected_count=fetch_report.collected_count,
             matched_count=matched_count,
             deduped_count=deduped_count,
+            candidate_count=candidate_count,
             selected_count=selected_count,
+            selector_used=selector_used,
             attempted_feed_count=fetch_report.attempted_feed_count,
             failed_feed_count=fetch_report.failed_feed_count,
         )

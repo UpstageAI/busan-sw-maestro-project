@@ -15,25 +15,31 @@ class Summarizer:
         self.base_url = base_url.rstrip("/")
 
     def summarize(
-        self, articles: list[Article], topic_labels: list[str]
+        self, articles: list[Article], topic_labels: list[str], *, limit: int | None = None
     ) -> tuple[list[Article], list[str], list[str]]:
         if not articles:
             return [], [], []
+        final_limit = min(limit or len(articles), len(articles))
         if not self.api_key:
-            return self._fallback(articles, topic_labels), self._common_topics(articles, topic_labels), [
-                "UPSTAGE_API_KEY가 없어 로컬 요약을 사용했습니다."
+            selected = articles[:final_limit]
+            return self._fallback(selected, topic_labels), self._common_topics(selected, topic_labels), [
+                "UPSTAGE_API_KEY가 없어 로컬 우선순위 후보를 선택하고 요약했습니다."
             ]
 
         try:
-            payload = self._call_upstage(articles, topic_labels)
-            return self._merge_ai_result(articles, payload), payload.get("common_topics", []), []
+            payload = self._call_upstage(articles, topic_labels, final_limit)
+            summarized = self._merge_ai_result(articles, payload, final_limit)
+            common_topics = payload.get("common_topics", []) or self._common_topics(summarized, topic_labels)
+            notices = [f"Upstage가 룰 기반 후보 {len(articles)}건 중 {len(summarized)}건을 최종 선별했습니다."]
+            return summarized, common_topics, notices
         except Exception as exc:
-            summarized = self._fallback(articles, topic_labels)
+            selected = articles[:final_limit]
+            summarized = self._fallback(selected, topic_labels)
             common_topics = self._common_topics(articles, topic_labels)
-            notices = [f"Upstage 요약 API 오류로 로컬 요약을 사용했습니다: {exc}"]
+            notices = [f"Upstage 선별/요약 API 오류로 로컬 우선순위 선별을 사용했습니다: {exc}"]
             return summarized, common_topics, notices
 
-    def _call_upstage(self, articles: list[Article], topic_labels: list[str]) -> dict[str, Any]:
+    def _call_upstage(self, articles: list[Article], topic_labels: list[str], limit: int) -> dict[str, Any]:
         article_payload = [
             {
                 "index": index,
@@ -41,6 +47,9 @@ class Summarizer:
                 "source": article.source,
                 "published_at": article.published_at,
                 "description": article.description,
+                "matched_keywords": article.matched_keywords,
+                "rule_score": article.priority_score,
+                "rule_reason": article.priority_reason,
             }
             for index, article in enumerate(articles)
         ]
@@ -52,6 +61,8 @@ class Summarizer:
                     "role": "system",
                     "content": (
                         "당신은 객관적이고 중립적인 뉴스 브리핑 에이전트입니다. "
+                        "후보 기사 중 사용자의 관심 조건과 실제 관련성이 높은 기사만 선별하세요. "
+                        "중복 이슈는 대표 기사 위주로 고르고, 너무 주변적인 기사는 제외하세요. "
                         "원문에 없는 사실, 정치적 의견, 투자 추천, 진위 판단을 추가하지 마세요. "
                         "반드시 설명 없이 유효한 JSON 객체만 출력하세요."
                     ),
@@ -61,7 +72,11 @@ class Summarizer:
                     "content": json.dumps(
                         {
                             "topics": topic_labels,
+                            "selection_limit": limit,
                             "instructions": {
+                                "selection": "후보 기사에서 최종 브리핑 기사만 선별",
+                                "selection_reason": "선택 이유는 사용자 관심 조건과의 관련성 중심으로 한국어 1문장",
+                                "issue_group": "같은 이슈를 묶는 짧은 한국어 이름",
                                 "article_summary": "기사별 요약은 한국어 2문장 이내",
                                 "why_it_matters": "사용자가 왜 봐야 하는지 중립적으로 1문장",
                                 "common_topics": "기사 전반의 공통 핵심 이슈 1~3개",
@@ -69,9 +84,11 @@ class Summarizer:
                             "articles": article_payload,
                             "output_schema": {
                                 "common_topics": ["공통 핵심 이슈"],
-                                "articles": [
+                                "selected_articles": [
                                     {
                                         "index": 0,
+                                        "selection_reason": "선별 이유",
+                                        "issue_group": "이슈 그룹",
                                         "summary": "요약",
                                         "why_it_matters": "중요한 이유",
                                     }
@@ -113,24 +130,44 @@ class Summarizer:
             text = "\n".join(lines).strip()
         return json.loads(text)
 
-    def _merge_ai_result(self, articles: list[Article], payload: dict[str, Any]) -> list[Article]:
-        by_index = {
-            int(item["index"]): item
-            for item in payload.get("articles", [])
-            if isinstance(item, dict) and "index" in item
-        }
+    def _merge_ai_result(self, articles: list[Article], payload: dict[str, Any], limit: int) -> list[Article]:
+        selected_items = payload.get("selected_articles") or payload.get("articles") or []
         merged: list[Article] = []
-        for index, article in enumerate(articles):
-            summary = by_index.get(index, {})
+        selected_indexes: set[int] = set()
+        for item in selected_items:
+            if not isinstance(item, dict) or "index" not in item:
+                continue
+            try:
+                index = int(item["index"])
+            except (TypeError, ValueError):
+                continue
+            if index < 0 or index >= len(articles) or index in selected_indexes:
+                continue
+            selected_indexes.add(index)
+            article = articles[index]
             merged.append(
                 article.model_copy(
                     update={
-                        "summary": summary.get("summary") or article.description or article.title,
-                        "why_it_matters": summary.get("why_it_matters")
+                        "summary": item.get("summary") or article.description or article.title,
+                        "why_it_matters": item.get("why_it_matters")
                         or "선택한 관심 분야와 관련된 최신 흐름을 파악하는 데 도움이 됩니다.",
+                        "selection_reason": item.get("selection_reason")
+                        or "룰 기반 후보군에서 사용자 관심 조건과의 관련성이 높아 선택했습니다.",
+                        "issue_group": item.get("issue_group"),
+                        "agent_selected": True,
                     }
                 )
             )
+            if len(merged) == limit:
+                break
+
+        if len(merged) < limit:
+            selected_urls = {str(article.url) for article in merged}
+            fallback_articles = [
+                article for article in articles if str(article.url) not in selected_urls
+            ][: limit - len(merged)]
+            merged.extend(self._fallback(fallback_articles, []))
+
         return merged
 
     def _fallback(self, articles: list[Article], topic_labels: list[str]) -> list[Article]:
