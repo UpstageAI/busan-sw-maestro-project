@@ -1,7 +1,7 @@
 """API 서버(Phase 2 · 2단계) 테스트 — FastAPI TestClient.
 
 ``POST /recommend`` 가 그래프를 invoke 해 프론트 계약(status 3종)을 반환하는지,
-그리고 인메모리 세션이 확인 질문 왕복에서 원본 입력을 기억하는지 검증한다.
+그리고 인메모리 세션이 확인 질문 왕복에서 누적 입력과 질문 횟수를 기억하는지 검증한다.
 검색은 기본 bm25 — 외부 API 미호출.
 """
 
@@ -50,7 +50,7 @@ def test_recommend_recommended():
 
 
 def test_session_remembers_original_input_across_clarification():
-    """확인 질문 왕복: 후속 요청이 clarify_answer 만 보내도 원본 입력과 병합된다."""
+    """확인 질문 왕복: 후속 요청이 clarify_answer 만 보내도 누적 입력과 병합된다."""
     sid = "s-flow"
     # 1) 입력 부족 → 확인 질문. 세션에 원본 보관됨.
     first = client.post("/recommend", json={
@@ -83,3 +83,57 @@ def test_session_isolated_per_id():
     }).json()
     assert a["status"] == "need_clarification"
     assert b["status"] == "recommended"
+
+
+def test_session_accumulates_answers_when_clarification_repeats():
+    sid = "s-repeat"
+    original_input = "앱 만들어요"
+    first = client.post("/recommend", json={
+        "session_id": sid,
+        "project_text": original_input,
+    }).json()
+    assert first["status"] == "need_clarification"
+
+    # 실제 프론트처럼 최초 project_text를 다시 보내도 세션의 누적 입력이 우선되어야 한다.
+    second = client.post("/recommend", json={
+        "session_id": sid,
+        "project_text": original_input,
+        "clarify_answer": "아직 잘 모르겠습니다",
+    }).json()
+    assert second["status"] == "need_clarification"
+    assert "아직 잘 모르겠습니다" in _SESSIONS[sid]["user_input"]
+
+    third = client.post("/recommend", json={
+        "session_id": sid,
+        "project_text": original_input,
+        "clarify_answer": "Django로 쇼핑몰을 만들고 있는데 Docker 배포가 어렵습니다",
+    }).json()
+    assert third["status"] in ("recommended", "limited")
+    assert sid not in _SESSIONS
+
+
+def test_vague_game_flow_stops_clarifying_after_two_questions():
+    sid = "s-vague-game"
+
+    first = client.post("/recommend", json={
+        "session_id": sid,
+        "project_text": "뭘 잘하는지 모르겠어요",
+    }).json()
+    assert first["status"] == "need_clarification"
+    assert _SESSIONS[sid]["clarification_count"] == 1
+
+    second = client.post("/recommend", json={
+        "session_id": sid,
+        "project_text": "",
+        "clarify_answer": "게임을 만들고 싶어요",
+    }).json()
+    assert second["status"] == "need_clarification"
+    assert _SESSIONS[sid]["clarification_count"] == 2
+
+    third = client.post("/recommend", json={
+        "session_id": sid,
+        "project_text": "",
+        "clarify_answer": "RPG 게임",
+    }).json()
+    assert third["status"] in ("recommended", "limited")
+    assert sid not in _SESSIONS

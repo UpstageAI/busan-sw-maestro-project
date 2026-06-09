@@ -6,11 +6,11 @@
 
 도달성 참고:
 - need_clarification / recommended 는 자연 입력으로 도달 가능 → E2E 로 검증.
-- limited / retry 루프는 현재 규칙 기반 모드에서 자연 입력으로는 도달 불가하다.
+- 테스트는 Solar 호출을 비활성화하므로 limited / retry 루프가 자연 입력으로는 도달 불가하다.
   fit_evaluation 이 max-정규화로 최고점을 항상 100 으로 만들어 후보가 하나라도 있으면
   is_recommendation_confident 가 참이 되고, BM25 는 항상 후보를 반환하기 때문.
   → 분기 배선은 (1) 라우터 함수 단위 테스트와 (2) 멘토 DB 가 빈 경우의 E2E 루프
-     테스트로 결정적으로 커버한다. (LLM swap-in 후에는 자연 도달하게 됨)
+     테스트로 결정적으로 커버한다. (실환경에서는 Solar 의도 점수로 분포가 달라질 수 있음)
 """
 
 from backend.app.graph.workflow import (

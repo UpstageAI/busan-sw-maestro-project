@@ -16,7 +16,8 @@
   그래프 노드명으로 흡수한다.
 - 그래프가 status 3종 모두에 대해 `final_response` 를 산출하므로(클래리피케이션
   포함), API 서버는 invoke 후 `final_response` 만 반환하면 된다.
-- LLM 미사용(노드들은 규칙 기반 경로로 완주), 세션은 서버단(인메모리) 책임.
+- Solar는 확인 답변 판정과 약점 분석 결과를 보강하며 실패 시 규칙 기반으로 폴백한다.
+  세션은 서버단(인메모리) 책임이다.
 """
 
 from __future__ import annotations

@@ -44,8 +44,30 @@ INFRA_GAP_CONTEXT = {
 
 
 class MentorRetrievalTest(unittest.TestCase):
-    def test_default_mock_mentor_data_has_ten_entries(self):
-        self.assertEqual(len(load_mentors()), 10)
+    def test_default_mock_mentor_data_has_twenty_entries(self):
+        self.assertEqual(len(load_mentors()), 20)
+
+    def test_default_mentor_data_has_unique_ids_and_required_fields(self):
+        mentors = load_mentors()
+        required_fields = {
+            "mentor_id",
+            "name",
+            "domain",
+            "keywords",
+            "can_help",
+            "less_relevant_for",
+            "profile_summary",
+        }
+
+        self.assertEqual(
+            len({mentor["mentor_id"] for mentor in mentors}),
+            len(mentors),
+        )
+        for mentor in mentors:
+            self.assertTrue(required_fields.issubset(mentor))
+            self.assertTrue(mentor["domain"])
+            self.assertTrue(mentor["keywords"])
+            self.assertTrue(mentor["can_help"])
 
     def test_rag_langgraph_gap_retrieves_ai_llm_mentor_first(self):
         mentors = load_mentors()

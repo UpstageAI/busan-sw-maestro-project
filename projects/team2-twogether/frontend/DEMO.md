@@ -1,6 +1,6 @@
 # 프론트엔드 데모 테스트 가이드 (팀원용)
 
-`feat/frontend-mvp` 브랜치를 pull 받아 **백엔드 없이** 프론트엔드 전체 흐름을 직접 돌려보는 방법입니다.
+`main` 브랜치를 받아 **백엔드 없이** 프론트엔드 전체 흐름을 직접 돌려보는 방법입니다.
 멘토 매칭 화면 6종(S-01~S-06)과 두 분기(확인 질문 / 재검색)가 **mock 데이터**로 end-to-end 동작합니다.
 
 ---
@@ -31,8 +31,8 @@ nvm use            # frontend 폴더에서 실행하면 .nvmrc(22)를 읽음
 ```bash
 cd ASM_TEAM2_AI_STUDY
 git fetch origin
-git checkout feat/frontend-mvp
-git pull origin feat/frontend-mvp
+git checkout main
+git pull origin main
 ```
 
 처음 받는 경우:
@@ -40,7 +40,7 @@ git pull origin feat/frontend-mvp
 ```bash
 git clone https://github.com/rutczzo/ASM_TEAM2_AI_STUDY.git
 cd ASM_TEAM2_AI_STUDY
-git checkout feat/frontend-mvp
+git checkout main
 ```
 
 ---
@@ -83,6 +83,9 @@ npm run dev
 | WebRTC · 실시간 · 영상 · 스트리밍 | `limited` 제한적 추천 |
 | `asdf`, `qwer` 등 의미 없는 입력 | 빈 결과(EMPTY) 화면 |
 | 문장에 `강제에러` 포함 | 에러(ERROR) 화면 + [다시 시도] |
+
+> 위 확인 질문 1개 흐름은 프론트 mock 시나리오입니다. 실서버는 질문을 한 화면에 하나씩,
+> 최대 2회 반환할 수 있습니다.
 
 ---
 
