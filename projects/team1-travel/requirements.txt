@@ -1,0 +1,17 @@
+﻿# --- Upstage Solar Pro 모델 제어 ---
+langchain-core
+langchain-upstage
+
+# --- LangGraph 워크플로우 구조 ---
+langgraph
+
+# --- 구조화 데이터 스키마 ---
+pydantic>=2.0
+
+# --- 로컬 데모 UI ---
+streamlit
+
+# --- 환경 변수 로드 ---
+python-dotenv
+
+requests

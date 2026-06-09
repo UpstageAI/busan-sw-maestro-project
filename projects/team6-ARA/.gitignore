@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+
+# uv / venv
+.venv/
+
+# Node
+node_modules/
+build/
+package-lock.json
+
+# env
+.env*
+
+# 로컬 저장소(데모용)
+*.db
+*.sqlite3
+
+# OS
+.DS_Store
+
+# Windows ADS 메타데이터(WSL)
+*:Zone.Identifier
