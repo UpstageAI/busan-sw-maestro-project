@@ -1,3 +1,9 @@
+import os
+
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import PromptTemplate
+from langchain_openai import ChatOpenAI
+
 # 계약 유형별 고위험 키워드 — analyzer.py의 RISK_CRITERIA와 대응되는 법적 위험 표현 목록
 RISK_KEYWORDS_BY_TYPE = {
     "근로": [
@@ -51,6 +57,38 @@ RISK_KEYWORDS_BY_TYPE = {
         "자동 갱신", "위약금", "일방적 해지",
         "책임 제한", "개인정보 제공", "환불 불가",
     ],
+    "매매": [
+        # 하자·반품
+        "하자 책임 없음", "반품 불가", "환불 거절", "교환 불가",
+        # 소유권·이전
+        "소유권 이전 지연", "소유권 유보", "인도 거절",
+        # 손해배상
+        "하자담보 면제", "품질 보증 없음", "AS 불가",
+    ],
+    "금전소비대차": [
+        # 이자·연체
+        "이자율 미명시", "연체이자 과다", "복리 적용",
+        # 기한·담보
+        "기한이익 상실", "담보 강제처분", "즉시 변제",
+        # 보증
+        "연대보증", "무한책임 보증",
+    ],
+    "도급": [
+        # 대금
+        "공사대금 미지급", "설계변경 비용 전가", "추가공사 무상",
+        # 하자보수
+        "하자보수 무한책임", "하자보수 비용 전액 부담",
+        # 지체
+        "지체상금 과다", "공기 연장 불인정",
+    ],
+    "가맹": [
+        # 계약 해지
+        "가맹비 환불 불가", "일방적 계약 해지", "위약금 과다",
+        # 영업
+        "영업구역 미보장", "영업시간 강제", "판매가격 강제",
+        # 물품
+        "필수 물품 강제 구매", "납품 단가 일방 변경",
+    ],
 }
 
 # 모든 계약 유형에 공통으로 적용되는 극단적 면책·포기 표현
@@ -69,6 +107,19 @@ COMMON_HIGH_RISK_KEYWORDS = [
     # 무제한
     "제한 없이", "제한 없는",
 ]
+
+# 계약 유형별 HIGH 위험 판단 기준 — LLM 폴백 프롬프트에 주입
+_HIGH_RISK_CRITERIA = {
+    "근로": "임금·수당 미지급, 부당해고·즉시 해고, 과도한 위약금·경업금지, 강행법규(근로기준법) 위반 소지",
+    "전세": "보증금 반환 거절·몰수, 임대인 하자 책임 전면 배제, 세입자 계약 해지권 박탈",
+    "외주": "대금 지급 완전 거절, 저작권·산출물 전면 귀속, 무기한 무상 유지보수 강제",
+    "이용약관": "숨겨진 자동결제·자동갱신, 개인정보 무단 제3자 제공, 사전 공지 없는 일방적 서비스 변경·중단",
+    "매매": "하자담보책임 전면 배제, 반품·환불 완전 불가, 소유권 이전 일방적 거절",
+    "금전소비대차": "과도한 연체이자·복리, 기한이익 상실 남용, 담보 강제처분·연대보증 무한책임",
+    "도급": "공사대금 지급 거절·무기한 지연, 설계변경 비용 수급인 전가, 하자보수 무한·무기한 책임",
+    "가맹": "가맹비 환불 완전 불가, 일방적 계약 해지권 남용, 영업구역·가격 강제로 자율성 완전 박탈",
+    "기타": "손해배상 청구권 박탈, 계약 해지권 박탈, 일방적 의무 부과",
+}
 
 # 부정 수식어: 키워드 매칭 후 바로 뒤에 이 표현이 오면 고위험에서 제외
 _NEGATION_SUFFIXES = ("없습니다", "없음", "없다", "않는다", "않음", "않습니다", "아니다", "아닙니다")
@@ -90,6 +141,58 @@ def _has_keyword_without_negation(text: str, keyword: str) -> bool:
     return not any(neg in after for neg in _NEGATION_SUFFIXES)
 
 
+def _llm_classify_risk_level(item: dict, contract_type: str) -> str:
+    """키워드로 판별 불가한 위험 조항을 LLM으로 high/medium 분류한다. 오류 시 medium 반환."""
+    llm = ChatOpenAI(
+        model="solar-pro",
+        temperature=0,
+        api_key=os.getenv("UPSTAGE_API_KEY"),
+        base_url="https://api.upstage.ai/v1",
+    )
+    high_criteria = _HIGH_RISK_CRITERIA.get(contract_type, _HIGH_RISK_CRITERIA["기타"])
+    prompt = PromptTemplate(
+        input_variables=["contract_type", "clause", "reason", "high_criteria"],
+        template=(
+            "당신은 계약서 위험 조항을 전문적으로 분석하는 법률 AI 어시스턴트입니다.\n\n"
+            "아래 조항은 1차 분석에서 이미 '위험하다'고 판정된 {contract_type} 계약서의 조항입니다.\n"
+            "이제 이 조항의 위험 등급(HIGH / MEDIUM)을 판정하세요.\n\n"
+            "[계약 유형] {contract_type}\n"
+            "[조항 원문]\n{clause}\n\n"
+            "[1차 분석 이유]\n{reason}\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "【HIGH 위험 — 즉각 확인 필요】\n"
+            "다음 중 하나라도 해당하면 HIGH입니다:\n"
+            "① 계약자의 기본 권리(이의 제기, 손해배상 청구, 계약 해지)를 명시적으로 금지·박탈\n"
+            "② 일방 당사자에게 무제한적 의무·책임을 강제\n"
+            "③ 강행법규(근로기준법, 소비자보호법 등) 위반 소지\n"
+            "④ {contract_type} 계약의 핵심 위험 요소: {high_criteria}\n\n"
+            "【MEDIUM 위험 — 검토 권장】\n"
+            "다음에 해당하면 MEDIUM입니다:\n"
+            "① 불리하지만 협상·수정 가능한 조항\n"
+            "② 특정 상황에서만 문제가 될 수 있는 조항\n"
+            "③ 명확성 부족으로 해석에 따라 불리해질 수 있는 조항\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "다음 순서로 판단하세요:\n"
+            "1. 이 조항이 계약 약자의 권리를 어느 정도로 제한하는가?\n"
+            "2. 법적 구제 수단(이의 제기, 손해배상 청구)이 차단되어 있는가?\n"
+            "3. 일방적·강제적 성격인가, 아니면 협상 여지가 있는가?\n\n"
+            "판정 결과를 다음 중 하나로만 답하세요 (다른 말 없이 정확히):\n"
+            "HIGH / MEDIUM"
+        ),
+    )
+    chain = prompt | llm | StrOutputParser()
+    try:
+        result = chain.invoke({
+            "contract_type": contract_type,
+            "clause": item.get("clause", ""),
+            "reason": item.get("reason", ""),
+            "high_criteria": high_criteria,
+        }).strip().upper()
+        return "high" if "HIGH" in result else "medium"
+    except Exception:
+        return "medium"
+
+
 def _is_high_risk(item: dict, keywords: list[str]) -> bool:
     """reason 문장과 clause 원문 양쪽에서 고위험 키워드를 탐색한다. 부정 문맥은 제외한다."""
     targets = [item.get("reason", ""), item.get("clause", "")]
@@ -104,9 +207,9 @@ def classify_risk(analysis: list[dict], contract_type: str = "기타") -> list[d
     """
     LLM 분석 결과에 위험도(risk_level)를 추가한다.
 
-    - low:    is_risky=False
-    - high:   is_risky=True + 고위험 키워드 발견 (reason 또는 clause 원문)
-    - medium: is_risky=True + 고위험 키워드 미발견
+    - low:         is_risky=False
+    - high:        is_risky=True + 고위험 키워드 발견 (빠름, 비용 없음)
+    - high/medium: is_risky=True + 키워드 미발견 → LLM 폴백으로 판별
     """
     keywords = _get_keywords(contract_type)
     results = []
@@ -128,6 +231,6 @@ def classify_risk(analysis: list[dict], contract_type: str = "기타") -> list[d
         elif _is_high_risk(normalized_item, keywords):
             risk_level = "high"
         else:
-            risk_level = "medium"
+            risk_level = _llm_classify_risk_level(normalized_item, contract_type)
         results.append({**normalized_item, "risk_level": risk_level})
     return results
