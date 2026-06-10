@@ -1,0 +1,59 @@
+name: "제출물 피드백"
+description: "코치가 팀의 제출물에 대한 피드백을 제공합니다."
+title: "[제출물 피드백] 팀N"
+labels: ["피드백"]
+body:
+  - type: input
+    id: team
+    attributes:
+      label: "팀"
+      description: "피드백 대상 팀을 입력하세요."
+      placeholder: "예: team1-newscatcher"
+    validations:
+      required: true
+  - type: input
+    id: coach
+    attributes:
+      label: "코치"
+      description: "피드백을 작성하는 코치 이름"
+      placeholder: "예: 김선웅 코치"
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: "총평"
+      description: "프로젝트에 대한 전반적인 평가를 작성해주세요."
+      placeholder: "프로젝트의 전반적인 완성도와 인상적인 부분을 작성하세요..."
+    validations:
+      required: true
+  - type: textarea
+    id: strengths
+    attributes:
+      label: "잘한 점"
+      description: "프로젝트에서 특히 잘한 부분을 구체적으로 작성해주세요."
+      placeholder: |
+        - 예: 프로젝트 구조가 깔끔하고 모듈화가 잘 되어 있음
+        - 예: README 문서화가 상세함
+    validations:
+      required: true
+  - type: textarea
+    id: improvements
+    attributes:
+      label: "개선할 점"
+      description: "보완하면 더 좋을 부분을 작성해주세요."
+      placeholder: |
+        - 예: 에러 핸들링이 부족함
+        - 예: 테스트 코드가 없음
+    validations:
+      required: true
+  - type: textarea
+    id: future_work
+    attributes:
+      label: "발전 방향"
+      description: "프로젝트를 더 발전시키기 위한 제안이나 방향을 작성해주세요."
+      placeholder: |
+        - 예: 사용자 인증 기능을 추가하면 실서비스에 가까워질 수 있음
+        - 예: CI/CD 파이프라인 구축을 추천
+    validations:
+      required: false

@@ -1,0 +1,291 @@
+import json
+import re
+import logging
+from langchain_core.messages import HumanMessage
+from agent.state import AgentState
+from agent.domain import (
+    EXCEPTION_KEYWORDS, VISA_KEYWORDS, detect_country, detect_purpose, is_deep_search,
+)
+from agent.nodes.llm import get_intent_llm
+
+logger = logging.getLogger(__name__)
+
+
+def _recent_transcript(messages, limit: int = 6) -> str:
+    """직전 대화 몇 턴을 'User/AI' 형태의 간단한 트랜스크립트로 만든다(현재 메시지 제외)."""
+    prior = list(messages[:-1])[-limit:]
+    lines = []
+    for m in prior:
+        role = "User" if m.__class__.__name__ == "HumanMessage" else "AI"
+        text = (m.content or "").replace("\n", " ")[:160]
+        lines.append(f"{role}: {text}")
+    return "\n".join(lines) if lines else "(이전 대화 없음)"
+
+
+async def intent_classifier(state: AgentState) -> dict:
+    """사용자 메시지에서 국가·목적·기간·직업을 추출하고 예외 상황을 감지한다."""
+    llm = get_intent_llm()  # temperature=0 결정적 추출, INTENT_MODEL 로 교체 가능
+    last_message = state["messages"][-1].content
+    transcript = _recent_transcript(state["messages"])
+
+    # ── 감탄사/반응/잡담 조기 감지 (LLM 호출 전) ──────────────────────────
+    # "뭐야 로또잖아;", "고마워요", "진짜요?" 처럼 비자 키워드가 없고 30자 이하인
+    # 단순 반응·감탄사·인사는 바로 general_chat 으로 분기한다.
+    # (LLM 이 대화 맥락을 보고 '비자 관련' 으로 오분류하는 패턴 차단)
+    _REACTION_PATTERNS = [
+        r"^(뭐야|진짜|헐|대박|와[.!;]*|어머|아이고|완전히|로또|ㄷㄷ|ㅎㄷㄷ|실화냐|미쳤[다어]|미칠)",
+        r"^(감사|고마|고맙|천만에|괜찮|별말씀|ㄳ|감사합니다|고맙습니다)[.!요]*$",
+        r"^(ㅋ{2,}|ㄷ{2,}|ㅎ{2,}|!{2,})[.!;]*$",
+        r"^(알겠|알겠습니다|알겠어요|넵|네\s*알겠|ㅇㅋ|오케이|ok|okay)[.!;]*$",
+    ]
+    _msg_strip = last_message.strip()
+    _no_visa_kw = not any(k in last_message.lower() for k in VISA_KEYWORDS)
+    _short_enough = len(_msg_strip) <= 40
+    _is_reaction = _no_visa_kw and _short_enough and any(
+        re.search(p, _msg_strip, re.IGNORECASE) for p in _REACTION_PATTERNS
+    )
+    if _is_reaction:
+        logger.info("intent: reaction/casual detected, short-circuit → general_chat")
+        detail = {"node": "intent_classifier",
+                  "headline": "자연어 → 구조화된 의도(JSON)",
+                  "items": [{"label": "① 사용자 요청(원문)", "value": last_message},
+                             {"label": "② 분류 근거", "value": "감탄사/반응/잡담 패턴 감지 → general_chat"},
+                             {"label": "③ 비자 관련 여부", "value": "아니오 → 일반 대화 분기"},
+                             {"label": "→ 다음 분기 근거", "value": "비자 무관 질문 → general_chat 로 이동"}]}
+        return {"is_visa_related": False, "node_details": [detail]}
+    # ─────────────────────────────────────────────────────────────────────
+
+    detected_exception = None
+    _msg_lower = last_message.lower()
+
+    # ── 화살표 패턴 우선 감지: "A → B" 형태로 비자 상태 전환을 명시한 경우 ──
+    # 예: "관광 → 취업", "학생 → 워킹홀리데이", "취업비자 → 영주권"
+    # (EXCEPTION_KEYWORDS 에도 일부 추가했지만, 조합이 무한하므로 regex 로 보완)
+    _ARROW_STATUS_CHANGE_RE = re.compile(
+        r"(관광|여행|학생|유학|취업|워킹홀리데이|워홀|취업비자|학생비자|관광비자)"
+        r"(?:\s*[→\->]\s*"              # 화살표 패턴: "학생 → 취업"
+        r"|\s*(?:에서|를|을|비자를?)\s+"  # 문장형: "학생비자에서 취업으로", "학생비자를 취업비자로"
+        r")"
+        r"(취업|영주|영주권|유학|워킹홀리데이|정착|이민)",
+        re.IGNORECASE
+    )
+    if not detected_exception and _ARROW_STATUS_CHANGE_RE.search(last_message):
+        detected_exception = "status_change"
+        logger.info("intent: arrow-pattern status_change detected: %s", last_message[:60])
+
+    # ── 상충/수정 신호 감지: "아니", "사실은", "그게 아니라" → 이전 맥락 무시하고 새 신호 우선 ──
+    # 예: "아니 유학만 하고 싶어" → 이전 취업 의도 무효화, 유학이 최신 신호
+    # 예: "관광이 아니라 취업" → 관광 무효, 취업만 유효
+    _NEGATION_RE = re.compile(r"(아니|사실은|그게 아니라|아니였|다시 생각해보니|아 미안|실수했)", re.IGNORECASE)
+    # "X가 아니라 Y" 충돌 패턴 — Y(긍정 측) 목적 추출
+    _CONFLICT_RE = re.compile(
+        r"(?:관광|여행|유학|취업|이민|워킹홀리데이|장기체류|단기)[이가]?\s*아니[라고]?\s*"
+        r"(취업|유학|여행|관광|이민|워킹홀리데이|장기체류|장기\s*거주|이민)", re.IGNORECASE
+    )
+    conflict_match = _CONFLICT_RE.search(last_message)
+    negation_match = _NEGATION_RE.search(last_message)
+    if negation_match:
+        logger.info("intent: negation/override detected — preserve country, replace purpose only")
+
+    for kw, exc_type in EXCEPTION_KEYWORDS.items():
+        if kw.lower() in _msg_lower:
+            detected_exception = exc_type
+            break
+
+    # 대화 깊이 계산: 5회 이상이면 "깊은 대화" — 축적된 컨텍스트 더 강하게 유지
+    turn_count = len([m for m in state.get("messages", []) if hasattr(m, "type") and m.type == "human"])
+    is_deep_turn = turn_count >= 5
+
+    # ③ 수정 신호 적용 전략:
+    #   - 부정(아니/사실은): 국가는 유지, 목적/예외만 교체 (핵심 수정)
+    #   - 충돌(X가 아니라 Y): Y를 새 목적으로 채택, 국가 유지
+    #   - 깊은 대화(5회+): 이전에 확정된 국가·목적·직업을 명시적으로 보존
+    override_flag = bool(negation_match)
+    if conflict_match:
+        context_instruction = (
+            f"사용자가 목적을 수정했습니다. "
+            f"이전 목적은 무효이며 새 목적은 '{conflict_match.group(1)}'입니다. "
+            f"국가는 이전 대화에서 확정된 것({state.get('country') or '미파악'})을 유지하세요."
+        )
+    elif override_flag:
+        context_instruction = (
+            f"사용자가 의도를 수정했습니다(부정 신호 감지). "
+            f"새 목적/의도를 우선하세요. "
+            f"단, 국가 정보({state.get('country') or '미파악'})는 현재 메시지에 다른 국가가 명시되지 않는 한 유지하세요."
+        )
+    elif is_deep_turn:
+        context_instruction = (
+            f"깊은 대화 중({turn_count}회차)입니다. "
+            f"확정된 정보: 국가={state.get('country') or '미파악'}, 목적={state.get('purpose') or '미파악'}, "
+            f"직업={state.get('profession') or '미파악'}. "
+            f"최신 메시지가 이 중 일부만 변경하려 한다면, 나머지는 그대로 이어받으세요."
+        )
+    else:
+        context_instruction = (
+            "최신 사용자 메시지가 국가만 바꾸고(예: '그럼 영국은?') 목적/직업을 생략했다면, "
+            "이전 대화의 목적/직업을 이어받아 채우세요."
+        )
+
+    extraction_prompt = f"""다음 사용자 메시지에서 비자 관련 정보를 추출하세요.
+{context_instruction}
+
+이전 대화:
+{transcript}
+
+세션에 기록된 정보:
+- 국가: {state.get("country") or "미파악"}
+- 목적: {state.get("purpose") or "미파악"}
+- 기간: {state.get("duration") or "미파악"}
+- 직업/분야: {state.get("profession") or "미파악"}
+
+최신 사용자 메시지: "{last_message}"
+
+다음 JSON 형식으로만 응답하세요 (파악 불가 항목은 null):
+{{
+  "country": "ISO 3166-1 alpha-2 국가코드(예: US, JP, GB, CA, AU, DE, FR, TH, ZA …) 또는 null",
+  "purpose": "employment|study|travel|long_stay|working_holiday 중 하나 또는 null",
+  "duration": "기간 문자열 또는 null",
+  "profession": "직업/분야 또는 null",
+  "has_sponsor": true|false|null,
+  "is_visa_related": true|false,
+  "is_followup": true|false
+}}
+
+판단 기준:
+- country/purpose: 메시지에 국가명(캐나다·미국·일본·영국·호주·독일·프랑스·남아공 등)이나
+  목적(취업·유학·여행·이민·워킹홀리데이 등)이 **명시되어 있으면 절대 null 로 두지 말고
+  반드시 코드/값으로 채우세요**. 예) "캐나다에서 …취업" → country="CA", purpose="employment".
+- is_visa_related: 해외 비자·체류·취업/유학/여행/이민·입국·여권 관련이면 반드시 true.
+  '취업/유학/체류/이민/입국'처럼 해외 이동을 함의하는 표현이 있으면 true 로 판단하세요.
+  순수한 잡담(날씨·음식·인사 등)만 false.
+- is_followup: **이전 대화에서 이미 국가·목적(또는 특정 비자)이 정해진 뒤** 그 비자에 대한
+  추가·상세·후속 질문(필요서류·처리기간·비용·특정 비자코드 상세·"스폰서 협의" 등 액션)이면 true.
+  다음 경우는 반드시 **false**:
+  ① 새로운 국가/목적 비자를 처음 추천받으려는 요청 ("미국 취업하고 싶어", "그럼 영국은?")
+  ② 이전 대화가 없는 첫 번째 질문
+  ③ 사용자가 의도·목적·국가를 수정하는 신호가 있을 때 ("아니 사실은 유학", "미안 다시 생각해보니")
+  ④ **비자 거절·연장·신분변경·긴급 등 예외 상황 처리 요청** (거절됐을 때/연장 신청/취소될까봐/긴급 발급 등)
+     → 이런 질문은 새 예외 처리가 필요하므로 is_followup=false로 둬야 압축하지 않고 완전한 안내를 제공할 수 있음
+
+예시:
+- "캐나다에서 소프트웨어 개발자로 취업하고 싶어요" → {{"country":"CA","purpose":"employment","profession":"소프트웨어 개발자","is_visa_related":true,"is_followup":false}}
+- "일본 유학 비자 알려줘" → {{"country":"JP","purpose":"study","is_visa_related":true,"is_followup":false}}
+- "남아공에서 일하려면?" → {{"country":"ZA","purpose":"employment","is_visa_related":true,"is_followup":false}}
+- "오늘 점심 뭐 먹지?" → {{"country":null,"purpose":null,"is_visa_related":false,"is_followup":false}}
+- (직전 대화에서 미국 취업 H-1B 안내를 받은 뒤) "H-1B 신청 시 추가 서류는?" → {{"country":"US","purpose":"employment","is_visa_related":true,"is_followup":true}}
+- (직전 대화에서 미국 취업 안내 후) "고용주와 스폰서 협의" → {{"country":"US","purpose":"employment","is_visa_related":true,"is_followup":true}}"""
+
+    try:
+        response = await llm.ainvoke([HumanMessage(content=extraction_prompt)])
+        raw = response.content.strip()
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        data = json.loads(match.group()) if match else {}
+    except Exception as e:
+        logger.warning("Intent extraction error: %s", e)
+        data = {}
+
+    # 키워드 폴백: LLM 이 null/오류를 반환해도 메시지에서 직접 국가·목적을 보강한다.
+    # (워크플로 결정성 — is_visa_related 휴리스틱과 동일한 철학. LLM 변동성에 견고)
+    kw_country = detect_country(last_message)
+    kw_purpose = detect_purpose(last_message)
+
+    # ── 트랜스크립트 보조 폴백 ──────────────────────────────────────────────
+    # 새 메시지에 국가 키워드가 없어도, 직전 대화(transcript)에 이미 국가가 언급된 경우
+    # 해당 국가를 이어받는다.
+    # 예: Q1="호주 워킹홀리데이..." → Q2="정직원 제안을 받았어요. 비자를 바꿀 수 있나요?"
+    # → last_message 에 "호주" 없음 → kw_country=None → transcript 에서 "호주" 감지 → AU
+    # 단, LLM 이 새 국가를 명시적으로 감지했다면(llm_country) 트랜스크립트 폴백은 쓰지 않는다.
+    if not kw_country and not (data.get("country") or "").strip():
+        kw_country = detect_country(transcript)
+
+    # 멀티턴: 국가가 바뀌면(예: 캐나다→영국) 이전 국가에 묶인 직업/기간/스폰서 정보는 폐기
+    llm_country = (data.get("country") or "").upper() or None
+    new_country = llm_country or kw_country
+    prev_country = state.get("country")
+    country_changed = bool(new_country and prev_country and new_country != prev_country)
+
+    if country_changed:
+        profession = data.get("profession")
+        duration = data.get("duration")
+        has_sponsor = data.get("has_sponsor")
+    else:
+        profession = data.get("profession") or state.get("profession")
+        duration = data.get("duration") or state.get("duration")
+        has_sponsor = data.get("has_sponsor") if data.get("has_sponsor") is not None else state.get("has_sponsor")
+
+    # 비자 관련 여부: 현재 메시지에서 강한 신호가 있거나 도메인 키워드가 있으면
+    # LLM 판단을 무시하고 비자 관련으로 강제. 이전 세션 맥락(state.country/purpose)은
+    # '이 메시지가 비자 질문인가' 판단에 사용하지 않는다.
+    # (예: "뭐야 로또잖아;", "고마워요" 같은 반응/잡담은 general_chat으로 정확히 분기)
+    keyword_hit = any(k in _msg_lower for k in VISA_KEYWORDS)
+    # ← 핵심 수정: 현재 메시지 신호만(이전 세션 state 제외)
+    cur_signal = bool(new_country or data.get("purpose") or kw_purpose or detected_exception)
+    llm_says = data.get("is_visa_related")
+    if cur_signal or keyword_hit:
+        is_visa_related = True
+    elif llm_says is True:
+        # LLM 이 비자 관련이라고 명시적으로 판단한 경우만 허용
+        is_visa_related = True
+    else:
+        is_visa_related = False
+
+    # 후속/상세 질문: 이전 대화가 있고(첫 질문 아님) 비자 관련이며 LLM 이 후속이라 판단하면 true.
+    # (새 추천이 아니라 기존 비자에 대한 추가 질문 → 프론트가 라이트 카드로 표시)
+    has_prior = len(state["messages"]) > 1
+    is_followup = bool(is_visa_related and has_prior and data.get("is_followup"))
+
+    deep = is_deep_search(last_message)
+
+    resolved = {
+        "country": new_country or state.get("country"),
+        "purpose": data.get("purpose") or kw_purpose or state.get("purpose"),
+        "duration": duration,
+        "profession": profession,
+        "has_sponsor": has_sponsor,
+        "is_exception": bool(detected_exception),
+        "exception_type": detected_exception or state.get("exception_type"),
+        "is_visa_related": bool(is_visa_related),
+        "is_followup": is_followup,
+        "deep_search": bool(deep),
+    }
+
+    # 폴백 사용 여부(트레이스 투명성): LLM 이 비웠지만 키워드로 보강했는지 표시
+    fb_parts = []
+    if not llm_country and kw_country:
+        fb_parts.append(f"국가={kw_country}")
+    if not data.get("purpose") and kw_purpose:
+        fb_parts.append(f"목적={kw_purpose}")
+    fallback_note = ("키워드 보강: " + ", ".join(fb_parts)) if fb_parts else "사용 안 함(LLM 추출 충분)"
+    # 비자 분류 근거: 어떤 신호를 봤는지 명시(디버깅용)
+    vis_reason = ("현재 메시지 국가/목적/예외 신호" if cur_signal else
+                  ("도메인 키워드 감지" if keyword_hit else
+                   ("LLM 판단" if llm_says is True else "신호 없음 → 일반 대화")))
+
+    detail = {
+        "node": "intent_classifier",
+        "headline": "자연어 → 구조화된 의도(JSON)",
+        "items": [
+            {"label": "① 사용자 요청(원문)", "value": last_message},
+            {"label": "② 추출 결과(LLM+키워드)", "value": json.dumps(
+                {k: resolved[k] for k in ("country", "purpose", "duration", "profession", "has_sponsor")},
+                ensure_ascii=False,
+            )},
+            {"label": "③ 비자 관련 여부", "value": ("예 (" + vis_reason + ")") if resolved["is_visa_related"] else "아니오 → 일반 대화 분기"},
+            {"label": "④ 예외 키워드 감지", "value": detected_exception or "감지 안 됨"},
+            {"label": "⑤ 키워드 폴백", "value": fallback_note},
+            {"label": "⑥ 국가 전환", "value": f"{prev_country}→{new_country} (맥락 초기화)" if country_changed else "없음"},
+            {"label": "→ 다음 분기 근거", "value": _route_reason(resolved)},
+        ],
+    }
+
+    return {**resolved, "node_details": [detail]}
+
+
+def _route_reason(r: dict) -> str:
+    if not r["is_visa_related"]:
+        return "비자 무관 질문 → general_chat 로 이동"
+    if r["is_exception"]:
+        return f"예외({r['exception_type']}) → exception_handler 로 이동"
+    if r["country"] and r["purpose"]:
+        return f"국가={r['country']}·목적={r['purpose']} 확보 → visa_rag_search 로 이동"
+    return "국가/목적 부족 → response_formatter(재질문)으로 이동"

@@ -1,0 +1,71 @@
+name: Submodule guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+jobs:
+  submodule-guard:
+    name: submodule-guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout submitted tree
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Block accidental git submodules
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          failed=0
+
+          if [ -f .gitmodules ]; then
+            echo "::error file=.gitmodules::Do not submit projects as git submodules. Remove .gitmodules and copy the project files without the nested .git directory."
+            failed=1
+          fi
+
+          gitlinks="$(git ls-files -s | awk '$1 == "160000" { print $4 }')"
+          if [ -n "$gitlinks" ]; then
+            echo "::error::Git submodule/gitlink entries were found. These usually happen when a team copies a project folder that still contains its own .git directory."
+            while IFS= read -r path; do
+              [ -n "$path" ] && echo "::error file=$path::Submodule/gitlink entry detected here. Remove the nested .git directory, then re-add the real files."
+            done <<< "$gitlinks"
+            failed=1
+          fi
+
+          nested_git="$(find projects -mindepth 2 \( -type d -o -type f \) -name .git -print 2>/dev/null || true)"
+          if [ -n "$nested_git" ]; then
+            echo "::error::Nested .git metadata was found under projects/. Copy submissions without their internal .git metadata."
+            while IFS= read -r path; do
+              [ -n "$path" ] && echo "::error file=$path::Nested git metadata is not allowed in submissions."
+            done <<< "$nested_git"
+            failed=1
+          fi
+
+          if [ "$failed" -ne 0 ]; then
+            cat <<'HELP'
+
+          How to fix locally:
+            1. Remove the bad index entry:
+                 git rm --cached -r projects/teamN-yourteam
+            2. Remove nested git metadata from the copied project:
+                 rm -rf projects/teamN-yourteam/.git
+            3. Re-add the actual files:
+                 git add projects/teamN-yourteam
+                 git commit -m "Fix teamN submission files"
+
+          Prevent it next time by copying with:
+                 rsync -av --exclude='.git' /path/to/your-project/ projects/teamN-yourteam/
+
+          HELP
+            exit 1
+          fi
+
+          echo "No accidental submodules or nested .git metadata found."

@@ -1,0 +1,33 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+*.egg
+# Virtual environment
+venv/
+.env/
+ENV/
+# Frontend
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+# OS files
+.DS_Store
+Thumbs.db
+# 서버 로그
+*.log
+
+# RAG 데이터 (로컬 전용)
+data/

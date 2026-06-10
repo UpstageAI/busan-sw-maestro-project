@@ -1,0 +1,56 @@
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.gaps {
+  background: var(--color-primary-soft);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+
+.gapsLabel {
+  display: block;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--color-primary-deep);
+  margin-bottom: var(--space-1);
+}
+
+.gapsText {
+  color: var(--color-ink);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-medium);
+}
+
+.heading {
+  font-size: var(--fs-sm);
+  color: var(--color-muted);
+  font-weight: var(--fw-medium);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.item {
+  animation: cardIn var(--motion-base) var(--ease-out) both;
+}
+
+.footer {
+  margin-top: var(--space-2);
+  display: flex;
+  justify-content: center;
+}
+
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}

@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# Frontend build / deps
+frontend/dist/
+frontend/node_modules/
+
+# Vector DB / local artifacts
+chroma_db/
+faiss_index/
+qdrant_storage/
+.qdrant-initialized
+
+# Claude personal context
+CLAUDE.local.md
+.claude/
+
+# Planning docs (바이너리 문서는 레포에 커밋하지 않음)
+docs/*.docx

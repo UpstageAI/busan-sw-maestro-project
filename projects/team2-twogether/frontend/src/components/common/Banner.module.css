@@ -1,0 +1,20 @@
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-warn-soft);
+  border-left: 3px solid var(--color-warn);
+  border-radius: var(--radius-sm);
+}
+
+.mark {
+  color: var(--color-warn);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+}
+
+.text {
+  font-size: var(--fs-sm);
+  color: var(--color-ink);
+}

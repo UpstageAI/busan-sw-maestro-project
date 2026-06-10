@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>VisaGuide AI · 신뢰도 분석</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Archivo+Expanded:wght@600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --navy:#16223D; --navy-2:#0E1830;
+    --paper:#ECEFF5; --surface:#FFFFFF;
+    --ink:#131826; --muted:#5A6379; --dim:#8791A6;
+    --line:#DCE2EE; --line-2:#E8ECF4;
+    --azure:#2B57E6; --azure-soft:#E7EDFD; --azure-ink:#1E40C0;
+    --stamp:#D23E32;
+    --go:#1F9D6B; --go-soft:#E3F3EC; --go-ink:#0F7A50;
+    --notice:#B26A0E; --notice-bg:#FBF1DC; --notice-line:#EBD8B0; --notice-ink:#8A540B;
+    --bad:#C8442E; --bad-soft:#FBE6E1; --bad-ink:#A2331F;
+    --s-text:#C5D0EC; --s-dim:#8C9BC4; --s-line:rgba(157,180,255,.14);
+    --shadow:0 1px 2px rgba(19,24,38,.05), 0 12px 30px rgba(19,24,38,.09);
+    --shadow-sm:0 1px 2px rgba(19,24,38,.05), 0 4px 12px rgba(19,24,38,.05);
+    --r:12px; --r-sm:9px; --r-lg:14px;
+    --display:"Archivo Expanded","Archivo",sans-serif;
+    --grotesk:"Archivo",sans-serif;
+    --body:"Pretendard","Archivo",system-ui,sans-serif;
+    --mono:"Space Mono",ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{ background:var(--paper); color:var(--ink); font-family:var(--body); line-height:1.6;
+    -webkit-font-smoothing:antialiased; word-break:keep-all; min-height:100vh; }
+  a{color:var(--azure-ink); text-decoration:none;}
+
+  /* ===== 네이비 발급기관 헤더 밴드 ===== */
+  header.band{ position:relative; display:flex; align-items:center; gap:13px; flex-wrap:wrap;
+    padding:14px 22px; color:#fff; border-bottom:1px solid rgba(0,0,0,.3);
+    background:
+      repeating-radial-gradient(circle at 22% 18%, transparent 0 10px, rgba(255,255,255,.022) 10px 11px),
+      linear-gradient(115deg,var(--navy),var(--navy-2)); }
+  .logo{ width:36px;height:36px;border-radius:9px;flex:0 0 auto; display:grid; place-items:center;
+    background:var(--surface); color:var(--navy); font-family:var(--display); font-weight:700; font-size:18px;
+    box-shadow:0 2px 0 var(--stamp), inset 0 0 0 1px rgba(255,255,255,.6); }
+  .brand{ display:flex; flex-direction:column; line-height:1.12; min-width:0; }
+  .wordmark{ font-family:var(--display); font-weight:700; font-size:15px; letter-spacing:.14em; white-space:nowrap; }
+  .wordmark .ai{ color:#9DB4FF; }
+  .brand .sub{ font-family:var(--mono); font-size:9.5px; letter-spacing:.14em; color:var(--s-dim); margin-top:3px; }
+  .band .sep{ width:1px; height:30px; background:rgba(157,180,255,.22); margin:0 3px; }
+  .band .ptitle{ font-family:var(--grotesk); font-weight:700; font-size:16px; letter-spacing:-.01em; }
+  .band .right{ margin-left:auto; display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+  .genpill{ font-family:var(--mono); font-size:11px; padding:5px 11px; border-radius:999px;
+    border:1px solid var(--s-line); color:var(--s-text); background:rgba(157,180,255,.07); white-space:nowrap; }
+
+  .wrap{max-width:1100px; margin:0 auto; padding:24px 22px 80px;}
+  .sub{color:var(--muted); font-size:13.5px; margin:14px 0 20px;}
+
+  .nav{display:flex; gap:9px; margin:0 0 24px; flex-wrap:wrap;}
+  .nav a{ font-family:var(--grotesk); font-weight:600; font-size:12.5px; padding:8px 13px; border:1px solid var(--line);
+    border-radius:var(--r-sm); background:var(--surface); color:var(--ink); box-shadow:var(--shadow-sm); transition:all .18s ease; }
+  .nav a:hover{ border-color:var(--azure); color:var(--azure-ink); transform:translateY(-1px); }
+  .nav a:focus-visible{ outline:2px solid var(--azure); outline-offset:2px; }
+
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px; margin-bottom:26px;}
+  .kpi{ background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); padding:16px 18px;
+    box-shadow:var(--shadow-sm); animation:rise .45s cubic-bezier(.2,.7,.2,1) both; }
+  .kpi .k{ font-family:var(--mono); font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
+  .kpi .v{ font-family:var(--display); font-size:30px; font-weight:700; margin-top:5px; letter-spacing:-.01em; color:var(--navy); line-height:1.1; }
+  .kpi .d{ font-size:12px; color:var(--dim); margin-top:4px; }
+  .v.ok{color:var(--go-ink);} .v.warn{color:var(--notice-ink);} .v.bad{color:var(--bad-ink);}
+
+  section.card{ background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); padding:20px 22px;
+    margin-bottom:20px; box-shadow:var(--shadow-sm); }
+  section.card h2{ font-family:var(--grotesk); font-size:15px; margin:0 0 5px; display:flex; align-items:center; gap:8px;
+    color:var(--navy); font-weight:700; letter-spacing:-.01em; }
+  section.card .hint{font-size:12.5px; color:var(--muted); margin:0 0 16px;}
+  section.card .hint b{ color:var(--ink); font-weight:600; }
+  .chartbox{position:relative; height:320px;}
+
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th,td{padding:10px 10px; text-align:left; border-bottom:1px solid var(--line);}
+  th{ font-family:var(--mono); font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; font-weight:700; }
+  td.num{font-family:var(--mono); text-align:right; color:var(--ink);}
+  tbody tr:hover{ background:#F7F9FD; }
+  /* 모바일: 표가 페이지를 밀지 않도록 표 영역만 가로 스크롤 */
+  #roundsTable, #v70Box{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  #roundsTable table, #v70Box table{ min-width:520px; }
+  .bar{display:inline-block; height:8px; border-radius:5px; background:var(--azure); vertical-align:middle; margin-right:7px;}
+  .tag{ display:inline-block; font-size:10.5px; font-family:var(--mono); padding:2px 8px; border-radius:6px; border:1px solid transparent; }
+  .tag.up{ background:var(--go-soft); color:var(--go-ink); border-color:#BFE6D2; }
+  .tag.down{ background:var(--bad-soft); color:var(--bad-ink); border-color:#F2C9BF; }
+  .tag.flat{ background:#EEF1F7; color:var(--muted); border-color:var(--line); }
+  .note{ background:var(--azure-soft); border:1px solid #D2DEFA; border-left:3px solid var(--azure); border-radius:0 8px 8px 0;
+    padding:11px 14px; font-size:12.5px; color:#23306A; margin:9px 0; }
+  .loading{color:var(--muted); padding:40px; text-align:center;}
+  .footnote{font-size:11.5px; color:var(--dim); margin-top:8px;}
+
+  @keyframes rise{ from{ opacity:0; transform:translateY(9px);} to{ opacity:1; transform:none;} }
+  @media (max-width:560px){
+    header.band{ padding:12px 15px; }
+    .band .sep{ display:none; }
+    .wrap{ padding:18px 14px 60px; }
+  }
+  @media (prefers-reduced-motion:reduce){ *,*::before,*::after{ animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body>
+<header class="band">
+  <div class="logo">V</div>
+  <div class="brand">
+    <span class="wordmark">VISAGUIDE<span class="ai"> AI</span></span>
+    <span class="sub">RELIABILITY ANALYTICS · 신뢰도 분석</span>
+  </div>
+  <span class="sep"></span>
+  <span class="ptitle">신뢰도 분석</span>
+  <div class="right">
+    <span class="genpill" id="genpill">loading…</span>
+  </div>
+</header>
+<div class="wrap">
+  <p class="sub">VisaGuide AI 라우팅 신뢰도의 라운드별 변화와 저신뢰 영역 개선 추이를 시각화합니다.</p>
+  <nav class="nav">
+    <a href="/">← 고객 화면</a>
+    <a href="/trace" target="_blank">워크플로우 트레이스 ↗</a>
+    <a href="#evolution">저신뢰영역 개선 추이</a>
+    <a href="#rounds">라운드별 상세</a>
+    <a href="#v70">R11 v70 예상-실측</a>
+    <a href="#r12">R12 저신뢰 집중검증</a>
+  </nav>
+
+  <div id="kpis" class="grid"></div>
+
+  <section class="card" id="evolution">
+    <h2>저신뢰 영역 개선 추이</h2>
+    <p class="hint">v180에서 취약했던 <b>신분변경 · 멀티턴 · 충돌</b> 영역이 라운드를 거치며 어떻게 변화했는지.</p>
+    <div class="chartbox"><canvas id="evoChart"></canvas></div>
+    <div id="evoNotes"></div>
+  </section>
+
+  <section class="card">
+    <h2>라운드별 전체 신뢰도</h2>
+    <p class="hint">각 검증 라운드의 전체 일치/통과율.</p>
+    <div class="chartbox"><canvas id="overallChart"></canvas></div>
+    <p class="footnote" id="overallFoot"></p>
+  </section>
+
+  <section class="card" id="rounds">
+    <h2>라운드별 상세</h2>
+    <p class="hint">각 라운드의 측정 범위·전체율·세부 카테고리.</p>
+    <div id="roundsTable"></div>
+  </section>
+
+  <section class="card" id="v70">
+    <h2>Round 11 · 예상–실측 대조 (v70)</h2>
+    <p class="hint">각 시나리오의 <b>예상 분기</b>를 사전 기록한 뒤 실제 라우팅과 대조한 결과.</p>
+    <div id="v70Box" class="loading">v70 검증 결과 대기 중… (검증 완료 후 자동 표시)</div>
+  </section>
+
+  <section class="card" id="r12">
+    <h2>Round 12 · 저신뢰 영역 집중 검증 (45개)</h2>
+    <p class="hint">v70에서 신뢰도가 낮거나 미검증이었던 4개 영역을 집중 검증. 키워드 보강 및 arrow regex 확장 후 재측정.</p>
+    <div id="r12Box" class="loading">R12 검증 결과 대기 중…</div>
+  </section>
+</div>
+
+<script>
+const C = {accent:'#2B57E6', ok:'#1F9D6B', warn:'#B26A0E', bad:'#C8442E', muted:'#5A6379', line:'#DCE2EE', ink:'#131826'};
+Chart.defaults.color = C.muted;
+Chart.defaults.borderColor = C.line;
+Chart.defaults.font.family = 'Archivo, Pretendard, system-ui, sans-serif';
+
+function pctClass(p){ return p>=85?'ok':p>=60?'warn':'bad'; }
+function esc(s){ const d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
+
+fetch('/analytics_data.json?v='+Date.now()).then(r=>r.json()).then(render).catch(e=>{
+  document.getElementById('kpis').innerHTML='<div class="kpi"><div class="k">오류</div><div class="v bad">데이터 없음</div><div class="d">'+esc(e.message)+'</div></div>';
+});
+
+function render(data){
+  document.getElementById('genpill').textContent = 'generated ' + (data.generated||'').replace('T',' ');
+
+  // ── KPI: 최신 라운드 + 핵심 개선 ──
+  const rounds = data.rounds||[];
+  const latest = rounds[rounds.length-1]||{};
+  const evo = data.metric_evolution||{};
+  function lastPct(arr){ const a=(arr||[]).filter(x=>x.pct!=null); return a.length?a[a.length-1].pct:null; }
+  function firstPct(arr){ const a=(arr||[]).filter(x=>x.pct!=null); return a.length?a[0].pct:null; }
+  const kpis = [
+    {k:'최신 라운드', v:latest.overall_pct!=null?latest.overall_pct+'%':'—', d:latest.label||'', cls:pctClass(latest.overall_pct||0)},
+    {k:'신분변경(status_change)', v:fmt(lastPct(evo.status_change)), d:'시작 '+fmt(firstPct(evo.status_change)), cls:pctClass(lastPct(evo.status_change)||0)},
+    {k:'멀티턴(multi_turn)', v:fmt(lastPct(evo.multi_turn)), d:'시작 '+fmt(firstPct(evo.multi_turn)), cls:pctClass(lastPct(evo.multi_turn)||0)},
+    {k:'충돌(conflicting)', v:fmt(lastPct(evo.conflicting)), d:'시작 '+fmt(firstPct(evo.conflicting)), cls:pctClass(lastPct(evo.conflicting)||0)},
+  ];
+  document.getElementById('kpis').innerHTML = kpis.map(x=>
+    '<div class="kpi"><div class="k">'+esc(x.k)+'</div><div class="v '+x.cls+'">'+esc(x.v)+'</div><div class="d">'+esc(x.d)+'</div></div>').join('');
+  function fmt(p){ return p==null?'—':p+'%'; }
+
+  // ── 저신뢰영역 개선 추이 (line) ──
+  const evoRounds = unionRounds(evo);
+  const evoDatasets = [
+    mkLine('신분변경', evo.status_change, evoRounds, C.bad),
+    mkLine('멀티턴', evo.multi_turn, evoRounds, C.warn),
+    mkLine('충돌', evo.conflicting, evoRounds, C.accent),
+  ];
+  new Chart(document.getElementById('evoChart'), {
+    type:'line',
+    data:{ labels:evoRounds.map(r=>r.label), datasets:evoDatasets },
+    options:{ responsive:true, maintainAspectRatio:false,
+      scales:{ y:{ min:0, max:100, ticks:{callback:v=>v+'%'} } },
+      plugins:{ legend:{position:'top'} } }
+  });
+  // evo notes
+  const notes = data.notes||{};
+  document.getElementById('evoNotes').innerHTML =
+    ['status_change','multi_turn','conflicting'].filter(k=>notes[k]).map(k=>'<div class="note">'+esc(notes[k])+'</div>').join('')
+    + (notes.root_fix?'<div class="note" style="border-left-color:'+C.ok+'; background:var(--go-soft); border-color:#BFE6D2; color:#0F5A3C">🔧 핵심 수정: '+esc(notes.root_fix)+'</div>':'');
+
+  // ── 라운드별 전체율 (bar) ──
+  new Chart(document.getElementById('overallChart'), {
+    type:'bar',
+    data:{ labels:rounds.map(r=>r.label),
+      datasets:[{ label:'전체 신뢰도(%)', data:rounds.map(r=>r.overall_pct),
+        backgroundColor:rounds.map(r=>r.overall_pct>=85?C.ok:r.overall_pct>=60?C.warn:C.bad), borderRadius:6 }] },
+    options:{ responsive:true, maintainAspectRatio:false,
+      scales:{ y:{min:0,max:100,ticks:{callback:v=>v+'%'}} }, plugins:{legend:{display:false}} }
+  });
+  document.getElementById('overallFoot').textContent =
+    '※ Round 10a(44%)는 B1(신규국가 첫요청)이 0%로 잡힌 영향 — 해당 국가들이 이미 ChromaDB에 학습돼 RAG로 직행(정상)했기 때문이며, 결함이 아닙니다.';
+
+  // ── 라운드 상세 테이블 ──
+  let html = '<table><thead><tr><th>라운드</th><th>날짜</th><th>범위</th><th>전체</th><th>세부 카테고리</th></tr></thead><tbody>';
+  const CAT_LABELS = {
+    abc_basic:'A/B/C기본', exception_special:'예외·특수', followup_chain:'후속10턴+',
+    status_change:'신분변경', multi_turn:'멀티턴', conflicting:'충돌',
+    deep_dialog:'깊은대화', context_switch:'맥락전환', conflict:'충돌', auto_followup:'자동후속',
+    chroma_recall:'ChromaDB재활용',
+    status_change_verb:'status_change동사형', exception_other:'난민·망명·범죄',
+    deep_turns_7plus:'T7+깊은턴', followup_edge:'followup엣지',
+  };
+  rounds.forEach(r=>{
+    const cats = Object.entries(r.categories||{}).map(([k,v])=>
+      '<span class="tag '+(v>=85?'up':v>=50?'flat':'down')+'">'+(CAT_LABELS[k]||k)+' '+(v==null?'—':v+'%')+'</span>').join(' ');
+    html += '<tr><td><b>'+esc(r.label)+'</b><br><span style="color:var(--dim);font-size:11px">'+esc(r.desc||'')+'</span></td>'+
+      '<td class="num">'+esc(r.date||'')+'</td>'+
+      '<td class="num">'+esc(r.passed)+'/'+esc(r.total)+'</td>'+
+      '<td class="num"><b style="font-family:var(--display);color:'+(r.overall_pct>=85?C.ok:r.overall_pct>=60?C.warn:C.bad)+'">'+esc(r.overall_pct)+'%</b></td>'+
+      '<td>'+cats+'</td></tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('roundsTable').innerHTML = html;
+
+  // ── v70 상세 (있으면) ──
+  const r11 = rounds.find(r=>r.id==='R11');
+  if(r11){
+    const cats = r11.categories||{};
+    let v = '<table><thead><tr><th>그룹</th><th>키</th><th>일치율</th><th></th></tr></thead><tbody>';
+    const labels11 = {abc_basic:'G1 A/B/C 기본 라우팅', exception_special:'G2 예외·특수상황(저신뢰)', followup_chain:'G3 후속질문 연계(10턴+)'};
+    Object.entries(cats).forEach(([k,val])=>{
+      v += '<tr><td><b>'+esc(labels11[k]||k)+'</b></td><td style="color:var(--muted);font-family:var(--mono);font-size:11px">'+esc(k)+'</td>'+
+        '<td class="num" style="color:'+(val>=85?C.ok:val>=60?C.warn:C.bad)+'"><b>'+esc(val)+'%</b></td>'+
+        '<td><span class="bar" style="width:'+(val||0)+'px;background:'+(val>=85?C.ok:val>=60?C.warn:C.bad)+'"></span></td></tr>';
+    });
+    v += '</tbody></table><p class="footnote">전체 '+esc(r11.passed)+'/'+esc(r11.total)+' 턴 예상-실측 일치 ('+esc(r11.overall_pct)+'%). 예상 분기는 시나리오 코드에 사전 기록 후 대조.</p>';
+    document.getElementById('v70Box').className=''; document.getElementById('v70Box').innerHTML = v;
+  }
+
+  // ── R12 저신뢰 집중 검증 상세 ──
+  const r12 = rounds.find(r=>r.id==='R12');
+  if(r12){
+    const cats12 = r12.categories||{};
+    const findings12 = r12.findings||{};
+    const labels12 = {
+      status_change_verb: 'G1 · status_change 동사형 (12개)',
+      exception_other:    'G2 · 난민/망명/간접범죄 (10개)',
+      deep_turns_7plus:   'G3 · T7+ 깊은 턴 컨텍스트 (13개)',
+      followup_edge:      'G4 · is_followup 엣지케이스 (10개)',
+    };
+    const findingKeys12 = {
+      status_change_verb: 'G1_STATUS_CHANGE',
+      exception_other:    'G2_EXCEPTION_OTHER',
+      deep_turns_7plus:   'G3_DEEP_TURNS',
+      followup_edge:      'G4_FOLLOWUP_EDGE',
+    };
+    let v12 = '<table><thead><tr><th>그룹</th><th>통과율</th><th>바</th><th>주요 발견</th></tr></thead><tbody>';
+    Object.entries(cats12).forEach(([k,val])=>{
+      const fk = findingKeys12[k]||k;
+      const finding = findings12[fk]||'';
+      v12 += '<tr><td><b>'+esc(labels12[k]||k)+'</b></td>'+
+        '<td class="num" style="color:'+(val>=85?C.ok:val>=60?C.warn:C.bad)+'"><b>'+esc(val)+'%</b></td>'+
+        '<td><span class="bar" style="width:'+(val||0)+'px;background:'+(val>=85?C.ok:val>=60?C.warn:C.bad)+'"></span></td>'+
+        '<td style="font-size:12px;color:var(--muted)">'+esc(finding)+'</td></tr>';
+    });
+    v12 += '</tbody></table>';
+    v12 += '<div class="note" style="margin-top:12px">'+
+      '🔑 <b>핵심 개선</b>: status_change 동사형 키워드 12개 + arrow regex 문장형 패턴 추가 (<b>8.3% → 91.7%</b>). '+
+      '난민/망명/경범죄 키워드 추가 후 G2 <b>0% → 100%</b>. '+
+      '잔여 5건은 LLM 판단 한계(이전 턴 암묵 country 전달, 예외+followup 동시 발생 시 flag 해제).</div>';
+    v12 += '<p class="footnote">전체 '+esc(r12.passed)+'/'+esc(r12.total)+' 통과 ('+esc(r12.overall_pct)+'%). 저신뢰 4영역 집중 검증. '+esc(r12.date)+'</p>';
+    document.getElementById('r12Box').className=''; document.getElementById('r12Box').innerHTML = v12;
+  }
+}
+
+function unionRounds(evo){
+  const seen = {}; const out = [];
+  ['status_change','multi_turn','conflicting'].forEach(k=>(evo[k]||[]).forEach(x=>{
+    if(!seen[x.round]){ seen[x.round]=1; out.push({round:x.round,label:x.label}); }
+  }));
+  // 정렬: R9, R10a, R10b, R11, R12
+  const order = {R9:0,R10a:1,R10b:2,R11:3,R12:4};
+  out.sort((a,b)=>(order[a.round]??9)-(order[b.round]??9));
+  return out;
+}
+function mkLine(label, series, evoRounds, color){
+  const map = {}; (series||[]).forEach(x=>map[x.round]=x.pct);
+  return { label, data:evoRounds.map(r=>map[r.round]??null), borderColor:color, backgroundColor:color,
+           tension:.25, spanGaps:true, pointRadius:5, pointHoverRadius:7, borderWidth:2.5 };
+}
+</script>
+</body>
+</html>

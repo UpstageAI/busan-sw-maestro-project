@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SWM 멘토 매칭 에이전트 · 와이어프레임 & 화면 명세서</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+  :root{
+    --paper:#F2F7FB;
+    --surface:#FFFFFF;
+    --surface-2:#F7FAFD;
+    --ink:#14252F;
+    --muted:#5A6B78;
+    --faint:#98A8B4;
+    --line:#DCE6EE;
+    --line-strong:#C4D3DF;
+    --brand:#6BBBE9;        /* ★ 서비스 핵심 색상 (스카이블루) */
+    --navy:#237BAE;         /* 딥 브랜드 — 흰 텍스트/주 액션/강조 텍스트 */
+    --navy-soft:#E2F1FB;    /* 스카이블루 소프트 톤 */
+    --amber:#D9824E;        /* 클레이 (블루 보색 계열) — 경고/주석 */
+    --amber-soft:#FBEADF;
+    --green:#1F9E86;        /* 틸그린 — 성공/적합 */
+    --green-soft:#DEF1EC;
+    --wire-fill:#E4ECF2;
+    --wire-fill-2:#D6E1E9;
+    --wire-line:#BCCCD6;
+    --wire-text:#8496A2;
+    --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:'Pretendard',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;font-family:var(--sans);color:var(--ink);background:var(--paper);
+    font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased;
+  }
+  /* subtle blueprint grid bg */
+  body::before{
+    content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+    background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:32px 32px;mask-image:radial-gradient(circle at 50% 0,black,transparent 80%);
+  }
+  .layout{position:relative;z-index:1;display:grid;grid-template-columns:248px 1fr;max-width:1240px;margin:0 auto;}
+
+  /* ---------- Sidebar nav ---------- */
+  nav.toc{
+    position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;
+    padding:34px 20px 40px 28px;border-right:1px solid var(--line);
+  }
+  nav.toc .brand{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--amber);text-transform:uppercase;margin-bottom:4px;}
+  nav.toc .doc-name{font-weight:700;font-size:15px;line-height:1.4;margin-bottom:24px;}
+  nav.toc a{display:block;color:var(--muted);text-decoration:none;font-size:13.5px;padding:5px 0 5px 12px;border-left:2px solid transparent;transition:.15s;}
+  nav.toc a:hover{color:var(--ink);}
+  nav.toc a.sub{padding-left:24px;font-size:12.5px;color:var(--faint);}
+  nav.toc a.active{color:var(--navy);border-left-color:var(--brand);font-weight:600;}
+  nav.toc .group{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;color:var(--faint);text-transform:uppercase;margin:18px 0 6px;}
+
+  /* ---------- Main ---------- */
+  main{padding:0 56px 120px;min-width:0;}
+  section{padding-top:56px;scroll-margin-top:20px;}
+  .kicker{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--amber);text-transform:uppercase;}
+  h1{font-size:34px;line-height:1.18;letter-spacing:-.01em;margin:6px 0 0;font-weight:800;}
+  h2{font-size:24px;margin:8px 0 14px;font-weight:750;letter-spacing:-.01em;display:flex;align-items:baseline;gap:12px;}
+  h2 .num{font-family:var(--mono);font-size:14px;color:var(--navy);font-weight:600;}
+  h3{font-size:17px;margin:30px 0 10px;font-weight:700;}
+  h4{font-size:14px;margin:18px 0 6px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-family:var(--mono);}
+  p{margin:0 0 12px;}
+  .lead{font-size:16px;color:var(--muted);max-width:62ch;}
+  a.inline{color:var(--navy);}
+  code{font-family:var(--mono);font-size:.86em;background:var(--navy-soft);color:var(--navy);padding:1px 6px;border-radius:4px;}
+  hr.div{border:none;border-top:1px solid var(--line);margin:48px 0 0;}
+
+  /* ---------- Cover ---------- */
+  header.cover{
+    position:relative;z-index:1;border-bottom:1px solid var(--line-strong);
+    padding:48px 56px 40px;background:linear-gradient(180deg,#fff,var(--surface-2));
+    grid-column:1 / -1;
+  }
+  header.cover .meta{display:flex;flex-wrap:wrap;gap:10px 26px;margin-top:22px;font-size:13px;color:var(--muted);}
+  header.cover .meta b{color:var(--ink);font-weight:600;}
+  header.cover .tag{display:inline-block;font-family:var(--mono);font-size:11px;letter-spacing:.08em;background:var(--navy);color:#fff;padding:4px 10px;border-radius:5px;border-left:3px solid var(--brand);}
+  header.cover .oneliner{margin-top:14px;font-size:17px;max-width:70ch;color:var(--ink);}
+
+  /* ---------- Callouts ---------- */
+  .note{border:1px solid var(--line);border-left:3px solid var(--navy);background:var(--surface);
+    padding:14px 18px;border-radius:8px;margin:16px 0;font-size:14px;}
+  .note.amber{border-left-color:var(--amber);background:var(--amber-soft);}
+  .note .lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--amber);font-weight:600;display:block;margin-bottom:4px;}
+  .note.navy .lbl{color:var(--navy);}
+
+  /* ---------- Tables ---------- */
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;margin:14px 0;background:var(--surface);}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;}
+  th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{background:var(--surface-2);font-weight:700;font-size:12px;letter-spacing:.02em;color:var(--muted);text-transform:uppercase;font-family:var(--mono);}
+  tr:last-child td{border-bottom:none;}
+  td .id{font-family:var(--mono);font-size:12px;color:var(--navy);font-weight:600;white-space:nowrap;}
+  .pill{display:inline-block;font-size:11px;font-family:var(--mono);padding:2px 8px;border-radius:20px;white-space:nowrap;}
+  .pill.req{background:var(--amber-soft);color:var(--amber);}
+  .pill.opt{background:var(--line);color:var(--muted);}
+  .pill.p0{background:var(--navy);color:#fff;}
+  .pill.p1{background:var(--navy-soft);color:var(--navy);}
+  .pill.p2{background:var(--line);color:var(--muted);}
+  .pill.a{background:var(--green-soft);color:var(--green);}
+  .pill.b{background:var(--amber-soft);color:var(--amber);}
+  .pill.c{background:var(--navy-soft);color:var(--navy);}
+
+  /* ---------- Screen block ---------- */
+  .screen{border:1px solid var(--line);border-radius:14px;background:var(--surface);margin:22px 0;overflow:hidden;}
+  .screen-head{display:flex;align-items:center;gap:14px;padding:16px 22px;border-bottom:1px solid var(--line);background:var(--surface-2);}
+  .screen-head .sid{font-family:var(--mono);font-size:13px;font-weight:600;background:var(--ink);color:#fff;padding:4px 10px;border-radius:6px;}
+  .screen-head h3{margin:0;font-size:18px;}
+  .screen-head .who{margin-left:auto;}
+  .screen-body{padding:22px;}
+  .grid2{display:grid;grid-template-columns:1.05fr .95fr;gap:26px;}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr;}}
+
+  /* ---------- Wireframe primitives ---------- */
+  .wire{
+    background:repeating-linear-gradient(45deg,var(--surface-2),var(--surface-2) 9px,#f2efe8 9px,#f2efe8 10px);
+    border:1.5px dashed var(--wire-line);border-radius:10px;padding:14px;position:relative;
+  }
+  .wire .browserbar{display:flex;align-items:center;gap:6px;padding:6px 10px;background:#fff;border:1px solid var(--line);border-radius:8px 8px 0 0;margin:-14px -14px 12px;}
+  .wire .browserbar .dot{width:9px;height:9px;border-radius:50%;background:var(--wire-line);}
+  .wire .browserbar .url{flex:1;margin-left:8px;height:18px;background:var(--wire-fill);border-radius:5px;}
+  .wf{ /* generic wireframe box */
+    background:var(--wire-fill);border:1px solid var(--wire-line);border-radius:7px;
+    color:var(--wire-text);font-size:12.5px;display:flex;align-items:center;justify-content:center;
+    text-align:center;padding:10px;min-height:34px;
+  }
+  .wf.ghost{background:#fff;border-style:dashed;}
+  .wf.solid{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:600;}
+  .wf.solid.alt{background:var(--navy);border-color:var(--navy);}
+  .wf.line{min-height:13px;border-radius:4px;background:var(--wire-fill-2);border:none;}
+  .wf.line.s{width:55%;}
+  .wf.line.m{width:78%;}
+  .wf.title{background:transparent;border:none;justify-content:flex-start;color:var(--ink);font-weight:700;font-size:14px;padding:2px 0;min-height:auto;}
+  .wf-stack{display:flex;flex-direction:column;gap:8px;}
+  .wf-row{display:flex;gap:8px;}
+  .wf-row > *{flex:1;}
+  .chiprow{display:flex;flex-wrap:wrap;gap:6px;}
+  .chip{font-size:11px;border:1px solid var(--wire-line);background:#fff;border-radius:20px;padding:3px 10px;color:var(--wire-text);}
+  /* annotation tags on wireframes */
+  .anno{position:relative;}
+  .tagnum{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;
+    background:var(--amber);color:#fff;font-family:var(--mono);font-size:11px;font-weight:600;border-radius:50%;
+    margin-right:6px;flex:none;}
+  .wf .tagnum{position:absolute;top:6px;left:6px;}
+
+  /* mentor card wireframe */
+  .mcard{background:#fff;border:1px solid var(--wire-line);border-radius:9px;padding:12px;display:flex;flex-direction:column;gap:8px;}
+  .mcard .top{display:flex;align-items:center;gap:8px;}
+  .mcard .ava{width:34px;height:34px;border-radius:50%;background:var(--wire-fill-2);flex:none;}
+  .scorebadge{margin-left:auto;font-family:var(--mono);font-size:11px;background:var(--green-soft);color:var(--green);padding:2px 8px;border-radius:6px;}
+
+  /* spec list inside screen */
+  .spec h4{margin-top:0;}
+  ul.tight{margin:6px 0 14px;padding-left:18px;}
+  ul.tight li{margin:3px 0;font-size:13.5px;}
+  ul.tight li b{font-weight:650;}
+  .state-row{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;margin:6px 0;}
+  .state-row .st{font-family:var(--mono);font-size:11px;background:var(--navy-soft);color:var(--navy);padding:2px 8px;border-radius:5px;white-space:nowrap;flex:none;margin-top:2px;}
+
+  /* ---------- Flow diagram ---------- */
+  .flow{display:flex;flex-direction:column;gap:0;margin:20px 0;font-size:13px;}
+  .flow .fnode{background:var(--surface);border:1.5px solid var(--line-strong);border-radius:10px;padding:10px 16px;text-align:center;position:relative;}
+  .flow .fnode b{display:block;}
+  .flow .fnode small{color:var(--muted);font-size:11.5px;}
+  .flow .fnode.screen-node{border-color:var(--navy);background:var(--navy-soft);}
+  .flow .fnode.branch{border-style:dashed;border-color:var(--amber);background:var(--amber-soft);}
+  .flow .arrow{height:26px;width:2px;background:var(--line-strong);margin:0 auto;position:relative;}
+  .flow .arrow::after{content:"";position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--line-strong);}
+  .flow .arrow.lbl::before{content:attr(data-l);position:absolute;left:10px;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:10.5px;color:var(--amber);white-space:nowrap;}
+  .flow .split{display:flex;gap:18px;}
+  .flow .split > div{flex:1;display:flex;flex-direction:column;align-items:stretch;}
+
+  /* token swatches */
+  .tokens{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin:14px 0;}
+  .tok{border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#fff;font-size:11.5px;}
+  .tok .sw{height:46px;}
+  .tok .meta{padding:7px 9px;}
+  .tok .meta b{display:block;font-size:12.5px;}
+  .tok .meta span{font-family:var(--mono);color:var(--muted);font-size:10.5px;}
+
+  /* dev split cards */
+  .devs{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:14px 0;}
+  @media(max-width:760px){.devs{grid-template-columns:1fr;}.layout{grid-template-columns:1fr;}nav.toc{display:none;}main{padding:0 22px 80px;}header.cover{padding:34px 22px;}}
+  .devcard{border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:18px;}
+  .devcard .h{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+  .devcard .h .av{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:700;color:#fff;}
+  .devcard.a .av{background:var(--green);} .devcard.b .av{background:var(--amber);}
+  .devcard h3{margin:0;font-size:16px;}
+  .devcard .role{font-size:12px;color:var(--muted);font-family:var(--mono);}
+
+  footer{grid-column:1/-1;border-top:1px solid var(--line);padding:28px 56px;color:var(--faint);font-size:12.5px;font-family:var(--mono);}
+  .codeblock{background:var(--ink);color:#EDEAE2;border-radius:10px;padding:16px 18px;font-family:var(--mono);font-size:12.5px;line-height:1.6;overflow-x:auto;margin:12px 0;}
+  .codeblock .k{color:#E0A878;} .codeblock .s{color:#9CC8A6;} .codeblock .c{color:#7d7a70;}
+</style>
+</head>
+<body>
+
+<header class="cover">
+  <span class="tag">화면 정의서 · WIREFRAME + SPEC</span>
+  <p class="kicker" style="margin-top:18px;">SW Maestro · 2조 · Agentic RAG</p>
+  <h1>SWM 멘토 매칭 에이전트<br>와이어프레임 &amp; 화면 명세서</h1>
+  <p class="oneliner">내 프로젝트의 기술 스택·진행 단계·고민을 입력하면, 지금 가장 도움받아야 할 멘토를 <b>추천 근거와 함께</b> 제시하는 LangGraph 기반 Agentic RAG 서비스.</p>
+  <div class="meta">
+    <span><b>대상 산출물</b> · 프론트엔드 구현용 화면 설계</span>
+    <span><b>구현 규모</b> · 프론트엔드 2인 (각자 AI 에이전트 활용)</span>
+    <span><b>기간 가정</b> · 1~2주 MVP</span>
+    <span><b>연동</b> · FastAPI <code>/recommend</code></span>
+    <span><b>버전</b> · v1.0 (기획서 기반)</span>
+  </div>
+</header>
+
+<div class="layout">
+
+  <nav class="toc" id="toc">
+    <div class="brand">2조 · SWM Agent</div>
+    <div class="doc-name">멘토 매칭 화면 정의서</div>
+    <div class="group">개요</div>
+    <a href="#overview">0. 개요 &amp; 설계 전제</a>
+    <a href="#screens">1. 화면 목록 (IA)</a>
+    <a href="#flow">2. 사용자 화면 플로우</a>
+    <div class="group">화면별 명세</div>
+    <a href="#s01" class="sub">S-01 메인 입력</a>
+    <a href="#s02" class="sub">S-02 분석 진행</a>
+    <a href="#s03" class="sub">S-03 확인 질문</a>
+    <a href="#s04" class="sub">S-04 추천 결과</a>
+    <a href="#s05" class="sub">S-05 멘토 상세</a>
+    <a href="#s06" class="sub">S-06 상태 / 예외</a>
+    <div class="group">시스템</div>
+    <a href="#components">3. 공통 컴포넌트 &amp; 토큰</a>
+    <a href="#api">4. API 연동 규약</a>
+    <a href="#split">5. 프론트 2인 작업 분담</a>
+  </nav>
+
+  <main>
+
+    <!-- ============ 0. OVERVIEW ============ -->
+    <section id="overview">
+      <p class="kicker">SECTION 00</p>
+      <h2><span class="num">0</span>개요 &amp; 설계 전제</h2>
+      <p class="lead">이 문서는 기획서의 핵심 기능과 워크플로우를 <b>프론트엔드가 구현 가능한 화면 단위</b>로 분해한 것입니다. 서비스 자체는 단발성 추천(세션 단위)이라 화면 수는 적지만, 에이전트가 도중에 끼어드는 두 분기(확인 질문 / 재검색)를 어떻게 화면으로 표현하느냐가 설계의 중심입니다.</p>
+
+      <div class="note navy">
+        <span class="lbl">설계 전제 1 · 프론트 형태</span>
+        기획서는 프론트로 <b>Streamlit</b>을 명시했지만, "프론트엔드 개발자 2명"이라는 전제에 맞춰 본 문서는 <b>FastAPI <code>/recommend</code> 엔드포인트를 호출하는 웹 SPA(React/Vue 등)</b> 기준으로 작성했습니다. 단, 모든 화면은 단일 페이지 안의 상태 전환으로 구성되어 Streamlit으로도 1:1 매핑이 가능합니다. (라우팅이 아닌 <code>viewState</code> 전환 방식)
+      </div>
+      <div class="note amber">
+        <span class="lbl">설계 전제 2 · 범위 한정</span>
+        MVP 제외 항목(로그인/인증, 장기 메모리, 추천 이력, 멘토 실제 연락·매칭, 멀티유저)은 <b>화면에서도 제외</b>합니다. 따라서 마이페이지·로그인·히스토리 화면은 없습니다. 프론트는 <b>입력 → 진행 → (분기) → 결과</b> 한 흐름에만 집중합니다.
+      </div>
+
+      <h4>핵심 기능 → 화면 매핑</h4>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>기획서 기능</th><th>담당 화면</th><th>프론트 처리 포인트</th></tr></thead>
+          <tbody>
+            <tr><td>자유 텍스트 입력</td><td class="id">S-01</td><td>1개 textarea + 선택적 구조화 입력(스택/단계/고민)</td></tr>
+            <tr><td>입력 파싱 · 약점 분석 · 검색 · 평가</td><td class="id">S-02</td><td>에이전트 파이프라인 단계별 진행 표시(스트리밍/폴링)</td></tr>
+            <tr><td>입력 모호성 판단 → 확인 질문 1개</td><td class="id">S-03</td><td><code>status:need_clarification</code> 수신 시 질문 1개 노출 → 답변 병합 재요청</td></tr>
+            <tr><td>멘토 추천 카드 출력 (상위 2~3명)</td><td class="id">S-04</td><td>약점 요약 + 멘토 카드 리스트 + 추천 근거</td></tr>
+            <tr><td>추천 신뢰도 낮음 → 1회 재검색</td><td class="id">S-02/S-04</td><td>재검색 진행 인디케이터 + "제한적 추천" 안내 배너</td></tr>
+            <tr><td>멘토 상세(도움 영역/부적합 영역)</td><td class="id">S-05</td><td>카드 클릭 시 상세 모달/패널</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <hr class="div">
+
+    <!-- ============ 1. SCREEN LIST ============ -->
+    <section id="screens">
+      <p class="kicker">SECTION 01</p>
+      <h2><span class="num">1</span>화면 목록 (Information Architecture)</h2>
+      <p class="lead">총 5개 주요 화면 + 1개 상태 묶음. 모두 단일 SPA 내 상태 전환이며, 모달 1종(S-05)을 포함합니다.</p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>화면명</th><th>유형</th><th>우선순위</th><th>주 담당</th><th>설명</th></tr></thead>
+          <tbody>
+            <tr><td class="id">S-01</td><td>메인 입력 화면</td><td>Page</td><td><span class="pill p0">P0</span></td><td><span class="pill a">FE-A</span></td><td>프로젝트 상황 자유 입력 + 추천받기 진입점</td></tr>
+            <tr><td class="id">S-02</td><td>분석 진행 화면</td><td>Page/Overlay</td><td><span class="pill p0">P0</span></td><td><span class="pill a">FE-A</span></td><td>에이전트 파이프라인 단계 진행 표시 + 재검색 표시</td></tr>
+            <tr><td class="id">S-03</td><td>확인 질문 화면</td><td>Page/Card</td><td><span class="pill p0">P0</span></td><td><span class="pill a">FE-A</span></td><td>입력 부족 시 확인 질문 1개 → 답변 병합</td></tr>
+            <tr><td class="id">S-04</td><td>추천 결과 화면</td><td>Page</td><td><span class="pill p0">P0</span></td><td><span class="pill b">FE-B</span></td><td>약점 요약 + 멘토 추천 카드(2~3개) + 근거</td></tr>
+            <tr><td class="id">S-05</td><td>멘토 상세 패널</td><td>Modal</td><td><span class="pill p1">P1</span></td><td><span class="pill b">FE-B</span></td><td>멘토 전체 프로필 · 도움/부적합 영역</td></tr>
+            <tr><td class="id">S-06</td><td>상태 / 예외 화면</td><td>States</td><td><span class="pill p1">P1</span></td><td><span class="pill b">FE-B</span></td><td>빈 / 로딩 / 에러 / 제한적 추천 상태</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note"><span class="lbl" style="color:var(--muted)">우선순위 기준</span> <span class="pill p0">P0</span> 데모 시연 필수 (end-to-end) · <span class="pill p1">P1</span> 완성도 보강(2주차) · <span class="pill p2">P2</span> 여유 시.</div>
+    </section>
+
+    <hr class="div">
+
+    <!-- ============ 2. FLOW ============ -->
+    <section id="flow">
+      <p class="kicker">SECTION 02</p>
+      <h2><span class="num">2</span>사용자 화면 플로우</h2>
+      <p class="lead">백엔드 LangGraph 노드 흐름을 <b>사용자가 실제로 보는 화면 전환</b>으로 압축한 다이어그램입니다. 분기는 모두 백엔드 응답의 <code>status</code> 값으로 결정되며, 프론트는 그 값에 따라 화면을 전환합니다.</p>
+
+      <div class="flow">
+        <div class="fnode screen-node"><b>S-01 메인 입력</b><small>프로젝트 설명·스택·단계·고민 입력 → [추천받기]</small></div>
+        <div class="arrow lbl" data-l="POST /recommend"></div>
+        <div class="fnode screen-node"><b>S-02 분석 진행</b><small>입력 파싱 → 약점 분석 → 검색 → 적합도 평가</small></div>
+        <div class="arrow lbl" data-l="응답 status 분기"></div>
+        <div class="split">
+          <div>
+            <div class="fnode branch"><b>status: need_clarification</b><small>입력 부족 판단</small></div>
+            <div class="arrow"></div>
+            <div class="fnode screen-node"><b>S-03 확인 질문</b><small>질문 1개 → 답변 입력</small></div>
+            <div class="arrow lbl" data-l="답변 병합 재요청"></div>
+            <div class="fnode" style="border-style:dashed;"><b>↻ S-02 재진입</b><small>기존 입력 + 답변 병합 분석</small></div>
+          </div>
+          <div>
+            <div class="fnode branch"><b>status: low_confidence</b><small>추천 신뢰도 낮음 (내부 1회)</small></div>
+            <div class="arrow lbl" data-l="검색 질의 보정"></div>
+            <div class="fnode" style="border-style:dashed;"><b>↻ 재검색 (백엔드)</b><small>S-02에 "재검색 중" 표시</small></div>
+            <div class="arrow"></div>
+            <div class="fnode branch"><b>status: limited</b><small>재검색 후에도 근거 약함</small></div>
+          </div>
+        </div>
+        <div class="arrow lbl" data-l="status: recommended / limited"></div>
+        <div class="fnode screen-node"><b>S-04 추천 결과</b><small>약점 요약 + 멘토 카드 2~3개 (+제한적 추천 배너)</small></div>
+        <div class="arrow lbl" data-l="카드 클릭"></div>
+        <div class="fnode screen-node"><b>S-05 멘토 상세 (모달)</b><small>전체 프로필 · 도움/부적합 영역</small></div>
+      </div>
+
+      <div class="note navy">
+        <span class="lbl">프론트 상태 모델 제안</span>
+        하나의 <code>viewState</code>로 관리: <code>INPUT</code> → <code>LOADING</code> → (<code>CLARIFY</code> ↺ <code>LOADING</code>) → <code>RESULT</code> / <code>ERROR</code>. 재검색(low_confidence)은 별도 화면 없이 <code>LOADING</code> 안의 <code>refining=true</code> 플래그로만 표현합니다.
+      </div>
+    </section>
+
+    <hr class="div">
+
+    <!-- ============ SCREEN SPECS ============ -->
+    <section id="s01">
+      <p class="kicker">SECTION 03 · 화면별 명세</p>
+      <h2><span class="num">3</span>화면별 와이어프레임 &amp; 명세</h2>
+
+      <!-- S-01 -->
+      <div class="screen">
+        <div class="screen-head">
+          <span class="sid">S-01</span><h3>메인 입력 화면</h3>
+          <span class="who"><span class="pill a">주 담당 FE-A</span></span>
+        </div>
+        <div class="screen-body">
+          <div class="grid2">
+            <!-- wireframe -->
+            <div class="wire">
+              <div class="browserbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url"></span></div>
+              <div class="wf-stack">
+                <div class="wf line s" style="margin:0 auto;"></div>
+                <div class="wf title" style="justify-content:center;text-align:center;display:block;">멘토를 찾고 싶은 프로젝트 상황을<br>편하게 적어주세요</div>
+                <div class="wf line m" style="margin:0 auto 6px;height:10px;"></div>
+                <div class="anno wf ghost" style="min-height:120px;align-items:flex-start;justify-content:flex-start;text-align:left;"><span class="tagnum">1</span><span style="margin-left:24px;">자유 텍스트 입력 (프로젝트 설명 / 기술 스택 / 진행 단계 / 고민)</span></div>
+                <div class="anno" style="position:relative;"><span class="tagnum" style="position:static;">2</span><span style="font-size:11px;color:var(--wire-text);">선택 입력 (접기/펼치기)</span></div>
+                <div class="wf-row">
+                  <div class="wf" style="min-height:30px;">기술 스택 칩 +</div>
+                  <div class="wf" style="min-height:30px;">진행 단계 ▼</div>
+                </div>
+                <div class="chiprow"><span class="chip">예시: 배포 고민</span><span class="chip">구조 리뷰</span><span class="chip">AI 활용</span></div>
+                <div class="anno wf solid alt" style="min-height:44px;"><span class="tagnum">3</span>추천받기</div>
+                <div class="wf line s" style="margin:4px auto 0;height:9px;"></div>
+              </div>
+            </div>
+            <!-- spec -->
+            <div class="spec">
+              <h4>화면 개요</h4>
+              <p style="font-size:13.5px;">서비스 진입 첫 화면. 사용자가 부담 없이 한 입력창에 프로젝트 상황을 쓰고 추천을 요청하는 단일 목적 화면. 구조화 입력(스택/단계)은 <b>선택</b>이며 비워도 동작해야 함.</p>
+              <h4>구성 요소</h4>
+              <div class="tbl-wrap"><table>
+                <thead><tr><th>No</th><th>요소</th><th>설명</th><th>필수</th></tr></thead>
+                <tbody>
+                  <tr><td>1</td><td>프로젝트 입력 textarea</td><td>멀티라인, placeholder 예시 제공, 최소 권장 글자수 힌트</td><td><span class="pill req">필수</span></td></tr>
+                  <tr><td>2</td><td>구조화 입력(접이식)</td><td>기술 스택 칩 입력 · 진행 단계 select · 고민 카테고리</td><td><span class="pill opt">선택</span></td></tr>
+                  <tr><td>3</td><td>[추천받기] 버튼</td><td>입력 검증 후 활성화, 클릭 시 S-02 전환</td><td><span class="pill req">필수</span></td></tr>
+                  <tr><td>4</td><td>예시 프롬프트 칩</td><td>클릭 시 textarea에 샘플 문장 채움(데모 편의)</td><td><span class="pill opt">선택</span></td></tr>
+                </tbody>
+              </table></div>
+              <h4>인터랙션 · 상태</h4>
+              <div class="state-row"><span class="st">disabled</span><span>textarea가 비어 있거나 공백뿐이면 [추천받기] 비활성</span></div>
+              <div class="state-row"><span class="st">submit</span><span>클릭 시 즉시 <code>viewState=LOADING</code> 전환, 중복 클릭 방지(버튼 잠금)</span></div>
+              <div class="state-row"><span class="st">validation</span><span>너무 짧은 입력(예: &lt;10자)은 막지 말 것 — 부족 판단은 백엔드 몫. 단 완전 공백만 차단</span></div>
+              <h4>API</h4>
+              <ul class="tight">
+                <li>제출 → <code>POST /recommend</code> · 본문에 <code>project_text</code>(+ 선택 필드) · 신규 <code>session_id</code> 발급(uuid)</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- S-02 -->
+      <div class="screen" id="s02" style="scroll-margin-top:20px;">
+        <div class="screen-head">
+          <span class="sid">S-02</span><h3>분석 진행 화면</h3>
+          <span class="who"><span class="pill a">주 담당 FE-A</span></span>
+        </div>
+        <div class="screen-body">
+          <div class="grid2">
+            <div class="wire">
+              <div class="browserbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url"></span></div>
+              <div class="wf-stack">
+                <div class="wf title" style="text-align:center;display:block;">에이전트가 프로젝트를 분석하고 있어요</div>
+                <div class="anno wf ghost" style="min-height:130px;align-items:stretch;flex-direction:column;justify-content:center;gap:9px;padding:14px;">
+                  <span class="tagnum">1</span>
+                  <div class="wf-row" style="align-items:center;"><div class="wf" style="flex:none;width:24px;min-height:24px;border-radius:50%;background:var(--green-soft);color:var(--green);">✓</div><div class="wf line m" style="height:11px;"></div></div>
+                  <div class="wf-row" style="align-items:center;"><div class="wf" style="flex:none;width:24px;min-height:24px;border-radius:50%;background:var(--green-soft);color:var(--green);">✓</div><div class="wf line m" style="height:11px;width:62%;"></div></div>
+                  <div class="wf-row" style="align-items:center;"><div class="wf" style="flex:none;width:24px;min-height:24px;border-radius:50%;background:var(--navy-soft);color:var(--navy);">◐</div><div class="wf line m" style="height:11px;width:50%;background:var(--navy-soft);"></div></div>
+                  <div class="wf-row" style="align-items:center;opacity:.5;"><div class="wf" style="flex:none;width:24px;min-height:24px;border-radius:50%;">○</div><div class="wf line m" style="height:11px;width:45%;"></div></div>
+                </div>
+                <div class="anno" style="text-align:center;"><span class="tagnum" style="position:static;">2</span><span style="font-size:11px;color:var(--amber);">검색 질의를 보정해 다시 찾는 중… (재검색 시에만)</span></div>
+              </div>
+            </div>
+            <div class="spec">
+              <h4>화면 개요</h4>
+              <p style="font-size:13.5px;">제출 후 결과 수신 전까지의 대기 화면. 단순 스피너 대신 <b>에이전트 파이프라인 단계</b>를 보여줘 "AI가 생각하는 과정"을 체감시키는 것이 데모 임팩트의 핵심.</p>
+              <h4>구성 요소</h4>
+              <div class="tbl-wrap"><table>
+                <thead><tr><th>No</th><th>요소</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td>1</td><td>단계 진행 리스트</td><td>입력 분석 → 약점 분석 → 멘토 검색 → 적합도 평가 (각 단계 완료/진행/대기 상태)</td></tr>
+                  <tr><td>2</td><td>재검색 인디케이터</td><td><code>refining=true</code>일 때만 "검색 질의 보정 후 재검색 중" 표시</td></tr>
+                </tbody>
+              </table></div>
+              <h4>구현 방식 (택1)</h4>
+              <ul class="tight">
+                <li><b>A. 가짜 단계 진행</b> — 백엔드가 단일 응답만 줄 경우, 프론트가 정해진 타이밍으로 단계 라벨을 순차 점등(가장 단순, MVP 권장).</li>
+                <li><b>B. 실제 스트리밍</b> — 백엔드가 SSE/단계 이벤트를 보내면 그대로 반영(여유 시 고도화, P1).</li>
+              </ul>
+              <h4>상태</h4>
+              <div class="state-row"><span class="st">refining</span><span>재검색 진입 시 단계 리스트 아래에 보정 안내 한 줄 추가</span></div>
+              <div class="state-row"><span class="st">timeout</span><span>응답 지연(예: 30s↑) 시 "조금 더 걸리고 있어요" 메시지, 에러 시 S-06 ERROR</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- S-03 -->
+      <div class="screen" id="s03" style="scroll-margin-top:20px;">
+        <div class="screen-head">
+          <span class="sid">S-03</span><h3>확인 질문 화면</h3>
+          <span class="who"><span class="pill a">주 담당 FE-A</span></span>
+        </div>
+        <div class="screen-body">
+          <div class="grid2">
+            <div class="wire">
+              <div class="browserbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url"></span></div>
+              <div class="wf-stack">
+                <div class="wf line s" style="height:10px;"></div>
+                <div class="anno wf ghost" style="min-height:54px;align-items:flex-start;justify-content:flex-start;text-align:left;padding:14px;"><span class="tagnum">1</span><span style="margin-left:24px;">추천을 위해 한 가지만 확인할게요 — "지금 가장 걱정되는 부분은 성능·확장성·배포·보안 중 어디에 가깝나요?"</span></div>
+                <div class="anno chiprow" style="margin-top:2px;"><span class="tagnum" style="position:static;">2</span><span class="chip">성능</span><span class="chip">확장성</span><span class="chip">배포</span><span class="chip">보안</span></div>
+                <div class="wf ghost" style="min-height:60px;align-items:flex-start;justify-content:flex-start;">또는 직접 입력…</div>
+                <div class="wf-row">
+                  <div class="wf ghost" style="flex:none;width:110px;">처음으로</div>
+                  <div class="anno wf solid alt"><span class="tagnum">3</span>답변하고 계속</div>
+                </div>
+              </div>
+            </div>
+            <div class="spec">
+              <h4>화면 개요</h4>
+              <p style="font-size:13.5px;">백엔드가 <code>status: need_clarification</code>을 반환했을 때만 등장. 기획서 원칙대로 <b>질문은 항상 1개</b>. 여러 질문을 한꺼번에 던지지 않음.</p>
+              <h4>구성 요소</h4>
+              <div class="tbl-wrap"><table>
+                <thead><tr><th>No</th><th>요소</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td>1</td><td>질문 텍스트</td><td>백엔드 <code>question</code> 그대로 표시</td></tr>
+                  <tr><td>2</td><td>선택지(옵션) + 자유 입력</td><td><code>options[]</code> 있으면 칩/버튼, 없으면 자유 입력만</td></tr>
+                  <tr><td>3</td><td>[답변하고 계속]</td><td>답변을 기존 입력과 함께 재요청</td></tr>
+                </tbody>
+              </table></div>
+              <h4>인터랙션</h4>
+              <div class="state-row"><span class="st">resubmit</span><span>같은 <code>session_id</code> + <code>clarify_answer</code> 첨부해 <code>POST /recommend</code> 재호출 → <code>viewState=LOADING</code></span></div>
+              <div class="state-row"><span class="st">1회 제한</span><span>확인 질문 라운드는 1회로 가정(기획서). 2회째 need_clarification이 와도 답변 후 결과로 진행하도록 방어 처리</span></div>
+              <div class="state-row"><span class="st">back</span><span>[처음으로]는 입력 초기화 후 S-01 복귀(세션 폐기)</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- S-04 -->
+      <div class="screen" id="s04" style="scroll-margin-top:20px;">
+        <div class="screen-head">
+          <span class="sid">S-04</span><h3>추천 결과 화면</h3>
+          <span class="who"><span class="pill b">주 담당 FE-B</span></span>
+        </div>
+        <div class="screen-body">
+          <div class="grid2">
+            <div class="wire">
+              <div class="browserbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url"></span></div>
+              <div class="wf-stack">
+                <div class="anno wf ghost" style="min-height:50px;align-items:flex-start;justify-content:flex-start;background:var(--navy-soft);border-color:var(--navy);"><span class="tagnum">1</span><span style="margin-left:24px;color:var(--navy);">분석된 약점: 모델 서빙 · MLOps · 배포 경험 부족</span></div>
+                <div class="anno" style="position:relative;"><span class="tagnum" style="position:static;">2</span><span style="font-size:11px;color:var(--wire-text);">추천 멘토 (상위 2~3명)</span></div>
+                <!-- mentor cards -->
+                <div class="mcard"><div class="top"><div class="ava"></div><div class="wf line s" style="height:11px;"></div><span class="scorebadge">적합 92</span></div><div class="chiprow"><span class="chip">MLOps</span><span class="chip">Infra</span></div><div class="wf line m" style="height:9px;"></div><div class="wf line m" style="height:9px;width:70%;"></div></div>
+                <div class="mcard"><div class="top"><div class="ava"></div><div class="wf line s" style="height:11px;width:40%;"></div><span class="scorebadge">적합 85</span></div><div class="chiprow"><span class="chip">Backend</span><span class="chip">Deploy</span></div><div class="wf line m" style="height:9px;width:80%;"></div></div>
+                <div class="anno wf ghost" style="font-size:11px;"><span class="tagnum">3</span><span style="margin-left:22px;">⚠ 근거가 제한적입니다 (limited일 때만)</span></div>
+                <div class="wf ghost" style="min-height:34px;">다시 입력하기</div>
+              </div>
+            </div>
+            <div class="spec">
+              <h4>화면 개요</h4>
+              <p style="font-size:13.5px;">결과 화면. 맨 위에 <b>분석된 약점 요약</b>(왜 이 멘토들인지 맥락 제공), 그 아래 <b>멘토 카드 2~3개</b>. 각 카드는 이름·전문 분야·추천 이유·적합한 도움 영역·적합도를 담음.</p>
+              <h4>구성 요소</h4>
+              <div class="tbl-wrap"><table>
+                <thead><tr><th>No</th><th>요소</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td>1</td><td>약점 요약 배너</td><td>분석된 gap 키워드 + 한 줄 설명</td></tr>
+                  <tr><td>2</td><td>멘토 카드 리스트</td><td>2~3개. 카드 = 이름 · domain 태그 · 추천 이유 · 도움 영역 · 적합도 점수</td></tr>
+                  <tr><td>3</td><td>제한적 추천 배너</td><td><code>status: limited</code>일 때만 노출(근거 약함 안내)</td></tr>
+                  <tr><td>4</td><td>[다시 입력하기]</td><td>S-01 복귀(새 세션)</td></tr>
+                </tbody>
+              </table></div>
+              <h4>인터랙션 · 상태</h4>
+              <div class="state-row"><span class="st">click</span><span>카드 클릭 → S-05 상세 모달 오픈</span></div>
+              <div class="state-row"><span class="st">limited</span><span>제한적 추천 시 배너 + 카드 적합도 배지 톤다운(경고색)</span></div>
+              <div class="state-row"><span class="st">empty</span><span>멘토 0건이면 S-06의 빈 결과 상태로(재검색 후에도 없을 때)</span></div>
+              <h4>주의</h4>
+              <p style="font-size:13px;color:var(--muted)">추천 이유는 <b>백엔드가 멘토 데이터 근거로 생성한 텍스트</b>를 그대로 노출만. 프론트에서 임의 문구 생성/가공 금지(환각 방지 원칙).</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- S-05 -->
+      <div class="screen" id="s05" style="scroll-margin-top:20px;">
+        <div class="screen-head">
+          <span class="sid">S-05</span><h3>멘토 상세 패널 (모달)</h3>
+          <span class="who"><span class="pill b">주 담당 FE-B</span></span>
+        </div>
+        <div class="screen-body">
+          <div class="grid2">
+            <div class="wire" style="background:rgba(27,26,23,.06);">
+              <div class="wf ghost" style="background:#fff;border-style:solid;border-color:var(--line-strong);min-height:300px;align-items:stretch;flex-direction:column;justify-content:flex-start;gap:10px;padding:16px;">
+                <div class="wf-row" style="align-items:center;"><div class="ava" style="width:44px;height:44px;"></div><div class="wf line s" style="height:13px;"></div><div class="wf" style="flex:none;width:24px;min-height:24px;">✕</div></div>
+                <div class="chiprow"><span class="chip">MLOps</span><span class="chip">Backend</span><span class="chip">Infra</span></div>
+                <div class="anno"><span class="tagnum" style="position:static;">1</span><span style="font-size:11px;color:var(--wire-text);">프로필 요약</span></div>
+                <div class="wf line m" style="height:9px;"></div><div class="wf line m" style="height:9px;width:75%;"></div>
+                <div class="anno"><span class="tagnum" style="position:static;">2</span><span style="font-size:11px;color:var(--green);">✓ 도움을 줄 수 있는 상황</span></div>
+                <div class="wf line m" style="height:9px;width:85%;background:var(--green-soft);"></div>
+                <div class="anno"><span class="tagnum" style="position:static;">3</span><span style="font-size:11px;color:var(--amber);">△ 상대적으로 덜 맞는 영역</span></div>
+                <div class="wf line m" style="height:9px;width:60%;background:var(--amber-soft);"></div>
+              </div>
+            </div>
+            <div class="spec">
+              <h4>화면 개요</h4>
+              <p style="font-size:13.5px;">카드보다 깊은 정보를 보는 모달. 합성 멘토 프로필의 전체 필드를 표시. 닫으면 S-04로 복귀(스크롤 위치 유지).</p>
+              <h4>구성 요소</h4>
+              <div class="tbl-wrap"><table>
+                <thead><tr><th>No</th><th>요소</th><th>매핑 필드</th></tr></thead>
+                <tbody>
+                  <tr><td>1</td><td>프로필 요약</td><td><code>profile_summary</code> · <code>domain[]</code> · <code>keywords[]</code></td></tr>
+                  <tr><td>2</td><td>도움 줄 수 있는 상황</td><td><code>can_help[]</code></td></tr>
+                  <tr><td>3</td><td>덜 맞는 영역</td><td><code>less_relevant_for[]</code></td></tr>
+                  <tr><td>4</td><td>이 프로젝트 추천 이유</td><td>응답의 <code>reason</code>(약점 연결)</td></tr>
+                </tbody>
+              </table></div>
+              <h4>인터랙션</h4>
+              <div class="state-row"><span class="st">open</span><span>카드 클릭 시 데이터는 이미 결과 응답에 포함 → 추가 API 불필요</span></div>
+              <div class="state-row"><span class="st">close</span><span>✕ / 배경 클릭 / ESC로 닫기, 포커스 트랩 처리(접근성)</span></div>
+              <div class="note amber" style="margin-top:12px;"><span class="lbl">범위 주의</span> "멘토링 신청/연락" 버튼은 <b>넣지 않음</b>(MVP 외부 실행 제외). 필요 시 비활성 라벨 "신청은 직접 진행" 정도만.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- S-06 -->
+      <div class="screen" id="s06" style="scroll-margin-top:20px;">
+        <div class="screen-head">
+          <span class="sid">S-06</span><h3>상태 / 예외 화면</h3>
+          <span class="who"><span class="pill b">주 담당 FE-B</span></span>
+        </div>
+        <div class="screen-body">
+          <h4 style="margin-top:0;">상태 정의</h4>
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>상태</th><th>발생 조건</th><th>화면 처리</th></tr></thead>
+            <tbody>
+              <tr><td><span class="st" style="display:inline-block">INITIAL</span></td><td>최초 진입</td><td>S-01 빈 입력 + 예시 칩 안내</td></tr>
+              <tr><td><span class="st" style="display:inline-block">LOADING</span></td><td>요청 처리 중</td><td>S-02 단계 진행 화면</td></tr>
+              <tr><td><span class="st" style="display:inline-block">LIMITED</span></td><td>재검색 후 근거 약함</td><td>S-04 + 제한적 추천 배너</td></tr>
+              <tr><td><span class="st" style="display:inline-block">EMPTY</span></td><td>후보 0건</td><td>"적합한 멘토를 찾지 못했어요 — 입력을 더 구체화해보세요" + [다시 입력]</td></tr>
+              <tr><td><span class="st" style="display:inline-block">ERROR</span></td><td>네트워크/서버 오류</td><td>"잠시 문제가 생겼어요" + [다시 시도](마지막 요청 재전송)</td></tr>
+            </tbody>
+          </table></div>
+          <div class="note"><span class="lbl" style="color:var(--muted)">구현 팁</span> 빈/에러/제한적 상태는 별도 페이지가 아니라 <b>S-04 컨테이너 안의 분기 렌더링</b>으로 처리하면 코드가 단순해집니다. 공통 <code>StateView</code> 컴포넌트(아이콘 + 메시지 + 액션 버튼) 하나로 EMPTY/ERROR/TIMEOUT을 모두 커버.</div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="div">
+
+    <!-- ============ 3. COMPONENTS / TOKENS ============ -->
+    <section id="components">
+      <p class="kicker">SECTION 04</p>
+      <h2><span class="num">4</span>공통 컴포넌트 &amp; 디자인 토큰</h2>
+      <p class="lead">두 개발자가 충돌 없이 작업하려면 공통 컴포넌트와 토큰을 먼저 합의해야 합니다. 아래는 최소 합의안(실제 색/폰트는 팀 결정).</p>
+
+      <h4>재사용 컴포넌트</h4>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>컴포넌트</th><th>쓰이는 곳</th><th>주요 props</th><th>소유</th></tr></thead>
+        <tbody>
+          <tr><td class="id">&lt;MentorCard&gt;</td><td>S-04</td><td>name, domain[], reason, helpArea[], score, onClick</td><td><span class="pill b">FE-B</span></td></tr>
+          <tr><td class="id">&lt;MentorDetailModal&gt;</td><td>S-05</td><td>mentor, open, onClose</td><td><span class="pill b">FE-B</span></td></tr>
+          <tr><td class="id">&lt;StepProgress&gt;</td><td>S-02</td><td>steps[], current, refining</td><td><span class="pill a">FE-A</span></td></tr>
+          <tr><td class="id">&lt;ClarifyQuestion&gt;</td><td>S-03</td><td>question, options[], onSubmit</td><td><span class="pill a">FE-A</span></td></tr>
+          <tr><td class="id">&lt;StateView&gt;</td><td>S-06</td><td>type(empty/error), message, action</td><td><span class="pill b">FE-B</span></td></tr>
+          <tr><td class="id">&lt;Chip&gt; / &lt;Button&gt;</td><td>전역</td><td>variant, size</td><td><span class="pill c">공통</span></td></tr>
+          <tr><td class="id">useRecommend()</td><td>전역 (API 훅)</td><td>submit(payload), state, data</td><td><span class="pill c">공통</span></td></tr>
+        </tbody>
+      </table></div>
+
+      <h4>디자인 토큰 (제안값 · 변경 가능)</h4>
+      <div class="tokens">
+        <div class="tok"><div class="sw" style="background:#6BBBE9;"></div><div class="meta"><b>Primary ★</b><span>핵심 #6BBBE9</span></div></div>
+        <div class="tok"><div class="sw" style="background:#237BAE;"></div><div class="meta"><b>Primary Deep</b><span>버튼/링크 #237BAE</span></div></div>
+        <div class="tok"><div class="sw" style="background:#1F9E86;"></div><div class="meta"><b>Success</b><span>틸그린 #1F9E86</span></div></div>
+        <div class="tok"><div class="sw" style="background:#D9824E;"></div><div class="meta"><b>Warn</b><span>클레이 #D9824E</span></div></div>
+        <div class="tok"><div class="sw" style="background:#14252F;"></div><div class="meta"><b>Ink</b><span>쿨차콜 #14252F</span></div></div>
+        <div class="tok"><div class="sw" style="background:#F2F7FB;border-bottom:1px solid var(--line)"></div><div class="meta"><b>BG</b><span>#F2F7FB</span></div></div>
+      </div>
+      <div class="note"><span class="lbl" style="color:var(--muted)">반응형</span> 모바일 1열 / 데스크탑 카드 그리드. 멘토 카드 2~3개뿐이라 복잡한 그리드는 불필요. 모달은 모바일에서 풀스크린 시트로.</div>
+    </section>
+
+    <hr class="div">
+
+    <!-- ============ 4. API ============ -->
+    <section id="api">
+      <p class="kicker">SECTION 05</p>
+      <h2><span class="num">5</span>API 연동 규약 (프론트 관점)</h2>
+      <p class="lead">프론트는 단일 엔드포인트 <code>POST /recommend</code>만 호출합니다. 응답의 <code>status</code> 하나로 화면 분기가 모두 결정됩니다. 아래 스키마는 <b>프론트-백엔드 합의용 제안</b>이며 실제 필드명은 백엔드와 맞추세요.</p>
+
+      <h4>요청 (Request)</h4>
+      <div class="codeblock">
+POST /recommend<br>
+{<br>
+&nbsp;&nbsp;<span class="k">"session_id"</span>: <span class="s">"uuid-..."</span>,&nbsp;&nbsp;<span class="c">// 신규 또는 확인 질문 후 동일 세션</span><br>
+&nbsp;&nbsp;<span class="k">"project_text"</span>: <span class="s">"웹 백엔드는 어느 정도 했는데 모델 서빙/배포가 막막합니다..."</span>,<br>
+&nbsp;&nbsp;<span class="k">"tech_stack"</span>: [<span class="s">"FastAPI"</span>, <span class="s">"React"</span>],&nbsp;&nbsp;<span class="c">// 선택</span><br>
+&nbsp;&nbsp;<span class="k">"stage"</span>: <span class="s">"배포 준비"</span>,&nbsp;&nbsp;<span class="c">// 선택</span><br>
+&nbsp;&nbsp;<span class="k">"clarify_answer"</span>: <span class="s">null</span>&nbsp;&nbsp;<span class="c">// 확인 질문 응답 시에만 값</span><br>
+}
+      </div>
+
+      <h4>응답 (Response) — 3가지 status</h4>
+      <div class="codeblock">
+<span class="c">// ① 입력 부족 → S-03 확인 질문</span><br>
+{ <span class="k">"status"</span>: <span class="s">"need_clarification"</span>,<br>
+&nbsp;&nbsp;<span class="k">"question"</span>: <span class="s">"가장 걱정되는 부분은 성능·확장성·배포·보안 중 어디에 가깝나요?"</span>,<br>
+&nbsp;&nbsp;<span class="k">"options"</span>: [<span class="s">"성능"</span>,<span class="s">"확장성"</span>,<span class="s">"배포"</span>,<span class="s">"보안"</span>] }<br><br>
+<span class="c">// ② 정상 추천 → S-04 결과</span><br>
+{ <span class="k">"status"</span>: <span class="s">"recommended"</span>,<br>
+&nbsp;&nbsp;<span class="k">"gaps"</span>: [<span class="s">"모델 서빙"</span>, <span class="s">"MLOps"</span>, <span class="s">"배포"</span>],<br>
+&nbsp;&nbsp;<span class="k">"refined"</span>: <span class="s">false</span>,&nbsp;&nbsp;<span class="c">// 재검색이 일어났는지</span><br>
+&nbsp;&nbsp;<span class="k">"mentors"</span>: [<br>
+&nbsp;&nbsp;&nbsp;&nbsp;{ <span class="k">"name"</span>:<span class="s">"가명"</span>, <span class="k">"domain"</span>:[<span class="s">"MLOps"</span>], <span class="k">"keywords"</span>:[...],<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">"score"</span>:92, <span class="k">"reason"</span>:<span class="s">"모델 서빙 약점과 직접 연결..."</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">"can_help"</span>:[...], <span class="k">"less_relevant_for"</span>:[...], <span class="k">"profile_summary"</span>:<span class="s">"..."</span> }<br>
+&nbsp;&nbsp;] }<br><br>
+<span class="c">// ③ 재검색 후에도 근거 약함 → S-04 + 제한 배너</span><br>
+{ <span class="k">"status"</span>: <span class="s">"limited"</span>, <span class="k">"gaps"</span>:[...], <span class="k">"mentors"</span>:[...],<br>
+&nbsp;&nbsp;<span class="k">"notice"</span>: <span class="s">"정확히 맞는 멘토가 부족해 근거가 제한적입니다."</span> }
+      </div>
+
+      <div class="note navy">
+        <span class="lbl">프론트 분기 규칙</span>
+        <code>need_clarification</code> → S-03 · <code>recommended</code>/<code>limited</code> → S-04 · <code>mentors</code>가 빈 배열 → S-06 EMPTY · HTTP 오류 → S-06 ERROR. 재검색(<code>low_confidence</code>)은 백엔드 내부에서 자동 처리되므로 프론트는 별도 호출 없이 <code>refined</code> 플래그만 읽으면 됩니다.
+      </div>
+      <div class="note amber">
+        <span class="lbl">백엔드 합의 필요 항목</span>
+        ① 단계 진행을 스트리밍할지(S-02 방식 A/B 결정) ② <code>session_id</code> 발급 주체(프론트 생성 vs 첫 응답에서 수신) ③ <code>limited</code>를 별도 status로 줄지 <code>recommended + notice</code>로 줄지. — 1주차 초반에 못 박을 것.
+      </div>
+    </section>
+
+    <hr class="div">
+
+    <!-- ============ 5. SPLIT ============ -->
+    <section id="split">
+      <p class="kicker">SECTION 06</p>
+      <h2><span class="num">6</span>프론트엔드 2인 작업 분담</h2>
+      <p class="lead">의존성을 최소화하려면 <b>"입력·진행 흐름"</b>과 <b>"결과·멘토 표현"</b>으로 가르는 게 가장 깔끔합니다. 둘 사이 계약은 <code>useRecommend()</code> 훅과 응답 스키마뿐이라, 목(mock) 응답으로 병렬 개발이 가능합니다.</p>
+
+      <div class="devs">
+        <div class="devcard a">
+          <div class="h"><div class="av">A</div><div><h3>FE-A · 입력 &amp; 흐름</h3><div class="role">Input / Loading / Clarify</div></div></div>
+          <ul class="tight">
+            <li><b>S-01</b> 메인 입력 화면 (textarea + 선택 입력 + 검증)</li>
+            <li><b>S-02</b> 분석 진행 화면 (<code>StepProgress</code>, 재검색 표시)</li>
+            <li><b>S-03</b> 확인 질문 화면 (<code>ClarifyQuestion</code>, 답변 병합 재요청)</li>
+            <li>전역 <code>viewState</code> 상태 머신 / 라우팅</li>
+            <li>예시 프롬프트 칩, 입력 UX</li>
+          </ul>
+        </div>
+        <div class="devcard b">
+          <div class="h"><div class="av">B</div><div><h3>FE-B · 결과 &amp; 멘토</h3><div class="role">Result / Mentor / States</div></div></div>
+          <ul class="tight">
+            <li><b>S-04</b> 추천 결과 화면 (약점 요약 + 카드 리스트)</li>
+            <li><b>S-05</b> <code>MentorCard</code> · <code>MentorDetailModal</code></li>
+            <li><b>S-06</b> <code>StateView</code> (빈/에러/제한적/타임아웃)</li>
+            <li>제한적 추천 배너 · 적합도 시각화</li>
+            <li>모달 접근성(포커스 트랩·ESC)</li>
+          </ul>
+        </div>
+      </div>
+
+      <h4>공동 / 선합의 (둘이 함께 30분이면 충분)</h4>
+      <ul class="tight">
+        <li><b>API 계약 확정</b> — 위 4장 스키마를 백엔드와 못 박고, 그 즉시 <code>mock /recommend</code> 응답(3종 status) JSON을 공유 → 백엔드 완성 전 병렬 개발.</li>
+        <li><b>공통 컴포넌트/토큰</b> — <code>&lt;Button&gt; &lt;Chip&gt;</code> + 색·폰트 토큰을 한 파일에 정의(누가 만들지 1명 지정).</li>
+        <li><b>useRecommend() 훅</b> — 요청/상태/응답을 캡슐화. 두 사람 모두 이 훅만 통해 통신(직접 fetch 금지).</li>
+      </ul>
+
+      <div class="note navy">
+        <span class="lbl">에이전트 활용 팁 (각자 1 에이전트)</span>
+        ① <b>mock 우선</b>: 에이전트에게 "위 응답 스키마로 3종 status mock JSON과 <code>useRecommend</code> 훅부터 만들어" → 화면을 실데이터처럼 개발. ② <b>컴포넌트 단위로 위임</b>: 화면 통째보다 <code>MentorCard</code>·<code>StepProgress</code> 같은 단위로 프롬프트하면 결과가 안정적. ③ <b>이 문서를 컨텍스트로</b>: 해당 화면의 명세 표·와이어프레임 캡처를 에이전트에 붙여 넣으면 요구사항 누락이 줄어듭니다. ④ 스타일은 마지막에 토큰으로 일괄 통일.
+      </div>
+
+      <h4>1~2주 일정과 매핑</h4>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>시기</th><th>FE-A</th><th>FE-B</th></tr></thead>
+        <tbody>
+          <tr><td>1주차 전반</td><td>API 계약·mock·훅, S-01</td><td>토큰·공통 컴포넌트, <code>MentorCard</code></td></tr>
+          <tr><td>1주차 후반</td><td>S-02 진행, FastAPI 실연동</td><td>S-04 결과 화면 조립</td></tr>
+          <tr><td>2주차 전반</td><td>S-03 확인 질문 분기</td><td>S-05 상세 모달 · S-06 상태</td></tr>
+          <tr><td>2주차 후반</td><td colspan="2">재검색/제한적 추천 표현 마무리 · 고정 데모 시나리오 3종 UI 점검 · 반응형/접근성 패스</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+  </main>
+
+  <footer>
+    SWM 2조 · 멘토 매칭 에이전트 · 와이어프레임 &amp; 화면 명세서 v1.0 &nbsp;·&nbsp; 기획서 기반 작성 &nbsp;·&nbsp; 화면 S-01~S-06 / 프론트엔드 2인 범위
+  </footer>
+</div>
+
+<script>
+  // scrollspy for sidebar
+  const links = [...document.querySelectorAll('nav.toc a')];
+  const map = {};
+  links.forEach(a=>{const id=a.getAttribute('href').slice(1);const el=document.getElementById(id);if(el)map[id]=a;});
+  const targets = Object.keys(map).map(id=>document.getElementById(id));
+  const obs = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){
+        links.forEach(l=>l.classList.remove('active'));
+        const a=map[e.target.id]; if(a)a.classList.add('active');
+      }
+    });
+  },{rootMargin:'-10% 0px -80% 0px',threshold:0});
+  targets.forEach(t=>obs.observe(t));
+</script>
+</body>
+</html>

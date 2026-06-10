@@ -1,0 +1,38 @@
+[project]
+name = "minecraft-guide-agent"
+version = "0.1.0"
+description = "Minecraft Guide Agent - 마인크래프트 초보자 길잡이 챗봇"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.0.0",
+    "httpx>=0.27.0",
+    "streamlit>=1.40.0",
+    # RDB (MySQL) + 마이그레이션
+    "sqlalchemy>=2.0.0",
+    "pymysql>=1.1.0",
+    "alembic>=1.13.0",
+    # Vector DB (Qdrant)
+    "qdrant-client>=1.12.0",
+    # 위키 적재(ingest)
+    "python-frontmatter>=1.1.0",
+    "langchain-text-splitters>=0.3.0",
+    # LLM / 그래프
+    "langchain-core>=0.3.0",
+    "langchain-community>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langchain-upstage>=0.3.0",
+    "langgraph>=0.2.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

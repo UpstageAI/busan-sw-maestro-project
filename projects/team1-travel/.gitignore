@@ -1,0 +1,23 @@
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- Virtual Environments ---
+venv/
+.venv/
+
+# --- Environment Variables (보안: 실제 키 노출 방지) ---
+.env
+
+# --- Streamlit ---
+.streamlit/
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+.DS_Store
+
+# --- MD ----
+Claude.md

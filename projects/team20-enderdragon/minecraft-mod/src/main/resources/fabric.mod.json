@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "minecraft_coach",
+  "version": "${version}",
+  "name": "Minecraft Coach",
+  "description": "마인크래프트 초보 코칭 에이전트 — 인게임에서 백엔드 LLM 코치(/coach)를 호출한다.",
+  "authors": ["엔더드래곤 20조"],
+  "contact": {
+    "homepage": "https://github.com/qlqlrh/asm-team20-ai-study",
+    "sources": "https://github.com/qlqlrh/asm-team20-ai-study"
+  },
+  "license": "MIT",
+  "icon": "assets/minecraft_coach/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["com.enderdragon.coach.CoachClientMod"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.5",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

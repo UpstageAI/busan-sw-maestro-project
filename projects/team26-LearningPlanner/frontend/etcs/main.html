@@ -1,0 +1,910 @@
+<!DOCTYPE html><html lang="ko"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>학습 플래너 - 커리큘럼 플래너</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                "tertiary-fixed": "#e2e2e2",
+                "on-secondary-fixed": "#1a1c1d",
+                "on-surface-variant": "#444748",
+                "error-container": "#ffdad6",
+                "inverse-surface": "#313030",
+                "surface-container-lowest": "#ffffff",
+                "surface": "#fcf9f8",
+                "surface-container": "#f0eded",
+                "inverse-on-surface": "#f3f0ef",
+                "surface-container-high": "#eae7e7",
+                "on-tertiary-fixed-variant": "#454747",
+                "secondary-fixed-dim": "#c6c6c8",
+                "tertiary": "#323434",
+                "on-tertiary": "#ffffff",
+                "outline-variant": "#c4c7c7",
+                "secondary": "#5d5e60",
+                "surface-tint": "#5e5e5e",
+                "on-tertiary-fixed": "#1a1c1c",
+                "surface-variant": "#e5e2e1",
+                "surface-bright": "#fcf9f8",
+                "on-error-container": "#93000a",
+                "tertiary-fixed-dim": "#c6c6c7",
+                "surface-container-low": "#f6f3f2",
+                "secondary-container": "#dfdfe1",
+                "secondary-fixed": "#e2e2e4",
+                "outline": "#747878",
+                "surface-container-highest": "#e5e2e1",
+                "on-secondary-fixed-variant": "#454749",
+                "on-background": "#1c1b1b",
+                "on-surface": "#1c1b1b",
+                "on-primary": "#ffffff",
+                "on-tertiary-container": "#b9baba",
+                "on-secondary": "#ffffff",
+                "on-primary-fixed-variant": "#474747",
+                "inverse-primary": "#c8c6c6",
+                "surface-dim": "#dcd9d9",
+                "tertiary-container": "#484a4b",
+                "error": "#ba1a1a",
+                "primary-container": "#4a4a4a",
+                "background": "#fcf9f8",
+                "primary-fixed-dim": "#c8c6c6",
+                "on-secondary-container": "#616365",
+                "on-error": "#ffffff",
+                "on-primary-fixed": "#1b1c1c",
+                "on-primary-container": "#bbb9b9",
+                "primary": "#333434",
+                "primary-fixed": "#e4e2e2"
+            },
+            "borderRadius": {
+                "DEFAULT": "0.25rem",
+                "lg": "0.5rem",
+                "xl": "0.75rem",
+                "full": "9999px"
+            },
+            "spacing": {
+                "container-max": "1280px",
+                "gutter": "24px",
+                "base": "8px",
+                "margin-desktop": "32px",
+                "margin-mobile": "16px"
+            },
+            "fontFamily": {
+                "label-sm": ["IBM Plex Sans KR"],
+                "body-md": ["IBM Plex Sans KR"],
+                "body-sm": ["IBM Plex Sans KR"],
+                "headline-lg-mobile": ["IBM Plex Sans KR"],
+                "body-lg": ["IBM Plex Sans KR"],
+                "headline-lg": ["IBM Plex Sans KR"],
+                "headline-md": ["IBM Plex Sans KR"],
+                "headline-sm": ["IBM Plex Sans KR"],
+                "label-md": ["IBM Plex Sans KR"]
+            },
+            "fontSize": {
+                "label-sm": ["12px", {"lineHeight": "1", "letterSpacing": "0.02em", "fontWeight": "600"}],
+                "body-md": ["16px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                "body-sm": ["14px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                "headline-lg-mobile": ["30px", {"lineHeight": "36px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "500"}],
+                "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "500"}],
+                "headline-sm": ["20px", {"lineHeight": "1.4", "fontWeight": "500"}],
+                "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "500"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { 
+            font-family: 'IBM Plex Sans KR', sans-serif; 
+            background: #fcf9f8;
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+            margin: 0;
+        }
+
+        .mesh-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -2;
+            background-color: #fcf9f8;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(226, 226, 226, 0.4) 0, transparent 50%), 
+                radial-gradient(at 50% 0%, rgba(240, 237, 237, 0.4) 0, transparent 50%), 
+                radial-gradient(at 100% 0%, rgba(246, 243, 242, 0.4) 0, transparent 50%), 
+                radial-gradient(at 0% 50%, rgba(237, 224, 221, 0.2) 0, transparent 50%), 
+                radial-gradient(at 100% 50%, rgba(229, 226, 225, 0.2) 0, transparent 50%), 
+                radial-gradient(at 0% 100%, rgba(226, 226, 228, 0.3) 0, transparent 50%), 
+                radial-gradient(at 50% 100%, rgba(243, 240, 239, 0.3) 0, transparent 50%), 
+                radial-gradient(at 100% 100%, rgba(255, 255, 255, 0.5) 0, transparent 50%);
+            filter: blur(60px);
+            animation: mesh-animation 25s ease-in-out infinite alternate;
+        }
+
+        @keyframes mesh-animation {
+            0% { transform: scale(1) translate(0, 0); }
+            50% { transform: scale(1.05) translate(-1%, 1%); }
+            100% { transform: scale(1.02) translate(1%, -1%); }
+        }
+
+        .glow-sphere {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(100px);
+            z-index: -1;
+            opacity: 0.3;
+            pointer-events: none;
+        }
+
+        .glow-1 {
+            width: 500px;
+            height: 500px;
+            background: #e2e2e2;
+            top: -150px;
+            right: -150px;
+            animation: float-1 30s infinite linear;
+        }
+
+        .glow-2 {
+            width: 400px;
+            height: 400px;
+            background: #c6c6c8;
+            bottom: -100px;
+            left: -100px;
+            animation: float-2 35s infinite linear;
+        }
+
+        @keyframes float-1 {
+            0% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(-80px, 120px) rotate(120deg); }
+            66% { transform: translate(40px, 250px) rotate(240deg); }
+            100% { transform: translate(0, 0) rotate(360deg); }
+        }
+
+        @keyframes float-2 {
+            0% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(120px, -80px) scale(1.1); }
+            100% { transform: translate(0, 0) scale(1); }
+        }
+
+        * { font-family: 'IBM Plex Sans KR', sans-serif !important; }
+        .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .glass-panel { backdrop-filter: blur(20px); background: rgba(255, 255, 255, 0.7); }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.03); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+        
+        .glow-button { 
+            box-shadow: 0 4px 15px rgba(51, 52, 52, 0.1);
+            transition: all 0.3s ease;
+        }
+        .glow-button:hover {
+            box-shadow: 0 8px 25px rgba(51, 52, 52, 0.2);
+            transform: translateY(-1px);
+        }
+        
+        .image-mask {
+            mask-image: radial-gradient(circle, black 65%, transparent 100%);
+            -webkit-mask-image: radial-gradient(circle, black 65%, transparent 100%);
+        }
+
+        .radio-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background-color: rgba(255, 255, 255, 0.5);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(196, 199, 199, 0.4);
+            border-radius: 9999px;
+            padding: 4px;
+            width: 100%;
+            height: 52px;
+            box-shadow: 0 8px 32px 0 rgba(28, 27, 27, 0.05);
+        }
+
+        .radio-container input { display: none; }
+
+        .radio-container label {
+            position: relative;
+            z-index: 2;
+            width: 33.33%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 500;
+            color: #747878;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+
+        .glider {
+            position: absolute;
+            display: flex;
+            height: 44px;
+            width: calc(33.33% - 4px);
+            background-color: transparent;
+            z-index: 1;
+            border-radius: 9999px;
+            transition: 0.25s cubic-bezier(0.645, 0.045, 0.355, 1);
+            left: 4px;
+        }
+
+        #radio-1:checked ~ .glider {
+            transform: translateX(0);
+            background: linear-gradient(135deg, #e2e2e2 0%, #bbbbbb 100%);
+            box-shadow: 0 4px 15px rgba(187, 187, 187, 0.3);
+        }
+        #radio-2:checked ~ .glider {
+            transform: translateX(100%);
+            background: linear-gradient(135deg, #747878 0%, #444748 100%);
+            box-shadow: 0 4px 15px rgba(68, 71, 72, 0.3);
+        }
+        #radio-3:checked ~ .glider {
+            transform: translateX(200%);
+            background: linear-gradient(135deg, #333434 0%, #1c1b1b 100%);
+            box-shadow: 0 4px 15px rgba(28, 27, 27, 0.3);
+        }
+
+        #radio-1:checked + label { color: #1c1b1b; }
+        #radio-2:checked + label { color: #ffffff; }
+        #radio-3:checked + label { color: #ffffff; }
+
+        #level-description {
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .description-change {
+            opacity: 0;
+            transform: translateY(5px);
+        }
+
+        /* Simplified AI Processing */
+        .progress-simple-container {
+            width: 100%;
+            max-width: 400px;
+        }
+        .progress-simple-bar {
+            height: 6px;
+            background: rgba(0,0,0,0.05);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress-simple-fill {
+            height: 100%;
+            background: #333434;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        /* Markdown Result Styling */
+        .markdown-content h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 1.5rem; color: #1c1b1b; }
+        .markdown-content h2 { font-size: 1.4rem; font-weight: 600; margin-top: 2rem; margin-bottom: 1rem; color: #333434; display: flex; align-items: center; gap: 8px; }
+        .markdown-content h2::before { content: ""; width: 4px; height: 1.2em; background: #333434; border-radius: 2px; }
+        .markdown-content p { font-size: 1rem; line-height: 1.7; color: #444748; margin-bottom: 1rem; }
+        .markdown-content ul { margin-bottom: 1.5rem; padding-left: 1.25rem; }
+        .markdown-content li { list-style-type: disc; margin-bottom: 0.5rem; color: #444748; }
+        .markdown-content strong { color: #1c1b1b; font-weight: 600; }
+        .markdown-content blockquote { border-left: 4px solid #e5e2e1; padding-left: 1rem; color: #747878; font-style: italic; margin: 1.5rem 0; }
+        .markdown-content .card-note { background: #f6f3f2; padding: 1.25rem; border-radius: 12px; margin: 1rem 0; border: 1px solid #e5e2e1; }
+
+        /* Subscribe Modal Styles */
+        .subscribe-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .subscribe-modal-overlay.active {
+            display: flex;
+            opacity: 1;
+        }
+        .subscribe {
+            position: relative;
+            background: #FFF;
+            padding: 35px 25px;
+            box-shadow: 0px 0px 60px 5px rgba(0,0,0,0.4);
+            border-radius: 4px;
+            width: 320px;
+            max-width: 90vw;
+            transform: scale(0.9);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .subscribe-modal-overlay.active .subscribe {
+            transform: scale(1);
+        }
+        .subscribe:after {
+            content: '';
+            position: absolute;
+            bottom: -15px;
+            right: 30px;
+            width: 0;
+            height: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-top: 15px solid #FFF;
+        }
+        .subscribe-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #0f0092;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .subscribe-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            transition: opacity 0.3s ease;
+        }
+        .subscribe-input {
+            border: none;
+            border-bottom: 2px solid #dfdfe1;
+            padding: 10px 0;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s ease;
+        }
+        .subscribe-input:focus {
+            border-bottom-color: #0f0092;
+        }
+        .submit-btn {
+            background: #0f0092;
+            color: #fff;
+            padding: 12px 25px;
+            font-size: 12px;
+            font-weight: 600;
+            border: none;
+            border-radius: 20px 20px 0 20px;
+            align-self: flex-end;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(15, 0, 146, 0.3);
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+        }
+        .submit-btn:hover {
+            background: #0d007a;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(15, 0, 146, 0.4);
+        }
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+        .submit-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* Success State Message */
+        .success-message {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 10px 0;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .success-message.active {
+            display: flex;
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .success-icon {
+            font-size: 48px;
+            color: #10b981;
+            margin-bottom: 12px;
+        }
+        .success-text {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1c1b1b;
+        }
+    </style>
+</head>
+<body class="text-on-background selection:bg-surface-container-highest">
+<div class="mesh-bg"></div>
+<div class="fixed top-0 left-0 w-full h-full pointer-events-none z-[-1] opacity-[0.4] mix-blend-multiply" id="paper-texture-overlay" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuB8VZ7L5s-PyHzFOmiLFze7JRCwd4pRqH-scx-DatQhiTwuHClL8bLvXroEhCANiGauAs13XX6QtlZtFkQyEu1FHsgOLZ3-8kk9FrMckykhh6ftfPuat-3lGk5O9FgHgr640HkuTh94qmkrQDpIH-VaDvAR0gNbY79JDIY32VkLz4kgqKC30bxLG4yr39PnxbgAtf8ArxzgozChI26JD8joSUyeg7f3lmMngqWcpsdwO0IsTC_G1X4VBen-3_msiTfXo2orHt78Un24'); background-size: cover; background-position: center;"></div>
+<div class="glow-sphere glow-1"></div>
+<div class="glow-sphere glow-2"></div>
+<!-- Email Subscription Modal -->
+<div class="subscribe-modal-overlay" id="email-modal-overlay" onclick="closeEmailModal(event)">
+<div class="subscribe" onclick="event.stopPropagation()">
+<p class="subscribe-title" id="modal-header-title">SEND TO EMAIL</p>
+<div class="subscribe-form" id="email-form">
+<input class="subscribe-input" id="email-input" placeholder="Enter your email" type="email">
+<button class="submit-btn" id="email-submit-btn" onclick="handleEmailSubmit()">
+                SUBMIT
+            </button>
+</div>
+<!-- Success Message Container -->
+<div class="success-message items-start" id="email-success-msg"><span class="material-symbols-outlined success-icon">check_circle</span>
+<div class="text-left w-full">
+    <p class="success-text text-lg">이메일을 전송하였습니다!</p>
+    <p class="text-[12px] text-on-surface-variant mt-2">입력하신 주소로 커리큘럼이 발송되었습니다.</p>
+</div></div>
+</div>
+</div>
+<nav class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-margin-mobile md:px-margin-desktop h-20 bg-transparent backdrop-blur-md">
+<a class="font-headline-lg text-headline-lg-mobile md:text-headline-lg text-primary tracking-tight font-semibold flex items-center gap-2 hover:no-underline decoration-0 hover:scale-[1.02] hover:opacity-80 transition-all duration-300" href="/">
+<span class="material-symbols-outlined text-primary text-[28px] md:text-[32px]">menu_book</span>학습 플래너
+    </a>
+</nav>
+<main class="pt-24 pb-12 min-h-screen px-margin-mobile md:px-margin-desktop relative z-10">
+<div class="max-w-[1200px] mx-auto">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter items-start">
+<!-- Left Column: Input Section -->
+<div class="lg:col-span-4 space-y-8">
+<div class="bg-white/70 backdrop-blur-xl rounded-2xl border border-white/60 p-8 shadow-2xl">
+<h1 class="font-headline-md text-headline-md text-primary mb-8">커리큘럼 설정</h1>
+<div class="space-y-6">
+<fieldset class="border-2 border-primary rounded-[4px] px-4 pb-2 pt-1 transition-all focus-within:border-secondary">
+<legend class="font-label-md text-primary px-2 ml-2">학습 대상</legend>
+<div class="relative flex items-center">
+<input class="w-full bg-transparent border-none focus:ring-0 py-2 text-body-md font-body-md outline-none placeholder:text-outline/50 cursor-text" id="study-target" placeholder="예: 초등 수학, 프론트엔드 개발" type="text">
+</div>
+</fieldset>
+<div class="space-y-4">
+<label class="font-label-md text-on-surface-variant ml-1">학습 역량</label>
+<div class="radio-container">
+<input checked="" id="radio-1" name="level-radio" onchange="updateLevelDescription('beginner')" type="radio" value="beginner">
+<label class="hover:scale-105 hover:text-on-surface transition-all duration-300" for="radio-1">초급</label>
+<input id="radio-2" name="level-radio" onchange="updateLevelDescription('intermediate')" type="radio" value="intermediate">
+<label class="hover:scale-105 hover:text-on-surface transition-all duration-300" for="radio-2">중급</label>
+<input id="radio-3" name="level-radio" onchange="updateLevelDescription('advanced')" type="radio" value="advanced">
+<label class="hover:scale-105 hover:text-on-surface transition-all duration-300" for="radio-3">고급</label>
+<span class="glider"></span>
+</div>
+<div class="px-2 pt-1">
+<p class="text-body-sm text-on-surface-variant font-medium min-h-[1.5rem]" id="level-description">기초 개념부터 차근차근</p>
+</div>
+</div>
+<button class="w-full bg-primary text-on-primary py-4 rounded-lg font-headline-sm hover:bg-secondary transition-all shadow-lg active:scale-[0.98] mt-4 flex items-center justify-center gap-2 glow-button hover:-translate-y-1 hover:bg-primary/90 duration-300" id="btn-generate-start" onclick="startGenerationFlow()">
+<span class="material-symbols-outlined">auto_awesome</span>
+                            커리큘럼 생성
+                        </button>
+</div>
+</div>
+</div>
+<!-- Right Column: Display Section (Dynamic State Container) -->
+<div class="lg:col-span-8 h-[650px]">
+<div class="bg-white/60 backdrop-blur-2xl rounded-2xl border border-white/60 shadow-2xl h-full flex flex-col items-center justify-center transition-all duration-500 overflow-hidden relative" id="display-container">
+<!-- State 1: Initial Placeholder -->
+<div class="flex flex-col items-center space-y-8 p-12 text-center" id="state-initial">
+<div class="relative w-72 h-72 flex items-center justify-center">
+<div class="absolute inset-0 bg-secondary/10 rounded-full blur-3xl scale-150 animate-pulse"></div>
+<div class="w-full h-full rounded-full flex items-center justify-center overflow-hidden border-2 border-white/80 shadow-2xl relative z-10 bg-white/30 backdrop-blur-md">
+<img alt="Study space atmosphere" class="w-full h-full object-cover image-mask opacity-80 grayscale-[0.2]" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBMVL7_qywioQdcEnR4V1FKr2C_-9gLLrcc3LrZZUvKPeUHq6DK4yBbyaiHAbYHrK7vpaYAmlB45Dpv_m-TOAgq8UqFmyb-v14IEob69ZwOVCpqJ5Zx4ftE0K8PnT2wVfMB8fU5zrNbD7Myxt-oo4_VsBKy67Ba7mKJVhtL2lAiyzAb6O7NUjWLxybiXyrmKfFAit7VPs4NFUUTQYkL5FhVuzKEZO0oSw2nnMnnizFwaQDt5SapcaSnWpZK_UJMDjIIMNzw3unwJpLY">
+</div>
+</div>
+<div class="space-y-4">
+<h2 class="font-headline-sm text-on-surface text-2xl font-bold tracking-tight">당신의 꿈을 위한 첫걸음</h2>
+<p class="font-body-md text-on-surface-variant max-w-md mx-auto leading-relaxed">나만을 위한 맞춤형 학습 로드맵을 설계해보세요.</p>
+</div>
+<div class="flex flex-wrap justify-center gap-4">
+<span class="px-5 py-2.5 bg-white/80 backdrop-blur-md rounded-full text-label-md text-on-surface-variant flex items-center gap-2 shadow-sm border border-outline-variant/30">
+<span class="material-symbols-outlined text-[18px] text-primary">lightbulb</span> 개인화된 학습
+                            </span>
+<span class="px-5 py-2.5 bg-white/80 backdrop-blur-md rounded-full text-label-md text-on-surface-variant flex items-center gap-2 shadow-sm border border-outline-variant/30">
+<span class="material-symbols-outlined text-[18px] text-primary">auto_graph</span> 효율적인 경로
+                            </span>
+</div>
+</div>
+<!-- State 2: Phase 1 Loading (Generating Questions) -->
+<div class="hidden flex flex-col items-center justify-center space-y-6 animate-in fade-in duration-500" id="state-loading-questions">
+<div class="text-center space-y-2">
+<p class="text-body-md font-medium text-primary">질문을 생성하고 있습니다...</p>
+<p class="text-label-sm text-on-surface-variant" id="progress-percent-1">0%</p>
+</div>
+<div class="progress-simple-container">
+<div class="progress-simple-bar">
+<div class="progress-simple-fill" id="progress-fill-1"></div>
+</div>
+</div>
+</div>
+<!-- State 3: Phase 2 Questions -->
+<div class="hidden w-full h-full flex flex-col p-8 md:p-12 animate-in slide-in-from-right-4 duration-500" id="state-questions">
+<div class="max-w-xl mx-auto w-full space-y-8">
+<div class="space-y-2 text-center">
+<h2 class="font-headline-md text-primary">맞춤형 분석을 위한 추가 질문</h2>
+<p class="text-body-sm text-on-surface-variant">더 정확한 로드맵을 위해 아래 정보를 입력해주세요.</p>
+</div>
+<div class="space-y-6">
+<div class="space-y-3">
+<label class="font-label-md text-primary block">1. 구체적인 학습 목표는 무엇인가요?</label>
+<input class="w-full bg-white/50 border border-outline-variant/50 rounded-lg px-4 py-3 text-body-md focus:ring-2 focus:ring-primary/20 outline-none" id="q-goal" placeholder="예: 취업용 포트폴리오 제작, 자격증 취득" type="text">
+</div>
+<div class="space-y-3">
+<label class="font-label-md text-primary block">2. 하루 평균 학습 가능한 시간은?</label>
+<select class="w-full bg-white/50 border border-outline-variant/50 rounded-lg px-4 py-3 text-body-md focus:ring-2 focus:ring-primary/20 outline-none appearance-none" id="q-time">
+<option value="1-2">1~2시간 (틈틈이 학습)</option>
+<option value="3-5">3~5시간 (집중 학습)</option>
+<option value="6+">6시간 이상 (전일제 학습)</option>
+</select>
+</div>
+<div class="space-y-3">
+<label class="font-label-md text-primary block">3. 선호하는 학습 방식은?</label>
+<div class="grid grid-cols-2 gap-4">
+<button class="q-pref-btn flex flex-col items-center justify-center p-4 rounded-xl border border-outline-variant/40 bg-white/40 hover:bg-white/80 transition-all gap-2" onclick="selectPref(this, 'video')">
+<span class="material-symbols-outlined text-3xl">play_circle</span>
+<span class="text-label-md">영상 중심</span>
+</button>
+<button class="q-pref-btn flex flex-col items-center justify-center p-4 rounded-xl border border-outline-variant/40 bg-white/40 hover:bg-white/80 transition-all gap-2" onclick="selectPref(this, 'text')">
+<span class="material-symbols-outlined text-3xl">menu_book</span>
+<span class="text-label-md">텍스트/문서 중심</span>
+</button>
+</div>
+</div>
+</div>
+<button class="w-full bg-primary text-on-primary py-4 rounded-lg font-headline-sm hover:bg-secondary transition-all shadow-lg active:scale-[0.98] mt-8 flex items-center justify-center gap-2" onclick="confirmQuestions()">
+                                확인 및 커리큘럼 구축
+                                <span class="material-symbols-outlined">arrow_forward</span>
+</button>
+</div>
+</div>
+<!-- State 4: Phase 3 Second Loading (Building Curriculum) -->
+<div class="hidden flex flex-col items-center justify-center space-y-6 animate-in fade-in duration-500" id="state-loading-build">
+<div class="text-center space-y-2">
+<p class="text-body-md font-medium text-primary">맞춤형 커리큘럼을 구축하고 있습니다...</p>
+<p class="text-label-sm text-on-surface-variant" id="progress-percent-2">0%</p>
+</div>
+<div class="progress-simple-container">
+<div class="progress-simple-bar">
+<div class="progress-simple-fill" id="progress-fill-2"></div>
+</div>
+</div>
+</div>
+<!-- State 5: Final Result (Markdown) -->
+<div class="hidden w-full h-full flex flex-col animate-in slide-in-from-bottom-4 duration-700" id="state-result">
+<div class="flex items-center justify-between px-8 py-6 border-b border-outline-variant/20 bg-white/40 backdrop-blur-md sticky top-0 z-20">
+<div>
+<h2 class="font-headline-md text-on-background text-xl font-bold" id="result-title">맞춤형 학습 커리큘럼</h2>
+<p class="text-label-sm text-on-surface-variant">AI에 의해 생성된 개별화된 로드맵입니다.</p>
+</div>
+<div class="flex gap-2">
+<button class="p-2.5 rounded-full hover:bg-surface-container transition-colors border border-outline-variant/30 flex items-center justify-center" onclick="copyResult()" title="복사하기">
+<span class="material-symbols-outlined text-[20px]">content_copy</span>
+</button>
+<button class="p-2.5 rounded-full hover:bg-surface-container transition-colors border border-outline-variant/30 flex items-center justify-center" onclick="openEmailModal()" title="이메일 전송">
+<span class="material-symbols-outlined text-[20px]">mail</span>
+</button>
+<button class="px-4 py-2 text-label-md border border-outline-variant/30 rounded-lg hover:bg-surface-container transition-colors ml-2" onclick="resetView()">
+                                    다시 만들기
+                                </button>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto p-8 custom-scrollbar">
+<article class="markdown-content max-w-3xl mx-auto" id="markdown-body">
+<!-- Content injected via JS -->
+</article>
+</div>
+</div>
+</div>
+</div>
+</div>
+<section class="mt-20 space-y-12">
+<h2 class="text-center font-headline-lg text-headline-lg-mobile md:text-headline-lg text-primary tracking-tight">학습 플래너 활용 가이드</h2>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+<div class="bg-white/60 backdrop-blur-xl border border-outline-variant/30 p-8 rounded-xl shadow-lg flex flex-col items-center text-center space-y-5 hover:shadow-2xl transition-all duration-300 group hover:-translate-y-2">
+<div class="w-14 h-14 bg-surface-container-high rounded-full flex items-center justify-center text-secondary group-hover:bg-secondary group-hover:text-on-secondary transition-colors">
+<span class="material-symbols-outlined text-3xl">edit_calendar</span>
+</div>
+<div class="space-y-2">
+<h3 class="font-headline-sm text-on-surface text-lg font-bold">커리큘럼 설계</h3>
+<p class="text-body-sm text-on-surface-variant">학습 대상과 수준을 입력하여 맞춤형 계획을 세웁니다.</p>
+</div>
+</div>
+<div class="bg-white/60 backdrop-blur-xl border border-outline-variant/30 p-8 rounded-xl shadow-lg flex flex-col items-center text-center space-y-5 hover:shadow-2xl transition-all duration-300 group hover:-translate-y-2">
+<div class="w-14 h-14 bg-surface-container-high rounded-full flex items-center justify-center text-secondary group-hover:bg-secondary group-hover:text-on-secondary transition-colors">
+<span class="material-symbols-outlined text-3xl">auto_awesome</span>
+</div>
+<div class="space-y-2">
+<h3 class="font-headline-sm text-on-surface text-lg font-bold">AI 기반 추천</h3>
+<p class="text-body-sm text-on-surface-variant">AI가 분석한 최적의 학습 경로와 자료를 제안받습니다.</p>
+</div>
+</div>
+<div class="bg-white/60 backdrop-blur-xl border border-outline-variant/30 p-8 rounded-xl shadow-lg flex flex-col items-center text-center space-y-5 hover:shadow-2xl transition-all duration-300 group hover:-translate-y-2" onclick="openEmailModal()" style="cursor: pointer;">
+<div class="w-14 h-14 bg-surface-container-high rounded-full flex items-center justify-center text-secondary group-hover:bg-secondary group-hover:text-on-secondary transition-colors">
+<span class="material-symbols-outlined text-3xl">share</span>
+</div>
+<div class="space-y-2">
+<h3 class="font-headline-sm text-on-surface text-lg font-bold">이메일 공유</h3>
+<p class="text-body-sm text-on-surface-variant">완성된 커리큘럼을 이메일로 바로 전송하거나 복사합니다.</p>
+</div>
+</div>
+<div class="bg-white/60 backdrop-blur-xl border border-outline-variant/30 p-8 rounded-xl shadow-lg flex flex-col items-center text-center space-y-5 hover:shadow-2xl transition-all duration-300 group hover:-translate-y-2">
+<div class="w-14 h-14 bg-surface-container-high rounded-full flex items-center justify-center text-secondary group-hover:bg-secondary group-hover:text-on-secondary transition-colors">
+<span class="material-symbols-outlined text-3xl">monitoring</span>
+</div>
+<div class="space-y-2">
+<h3 class="font-headline-sm text-on-surface text-lg font-bold">학습 리포트</h3>
+<p class="text-body-sm text-on-surface-variant">진행 상황을 시각적으로 확인하고 성장을 기록합니다.</p>
+</div>
+</div>
+</div>
+</section>
+</div>
+</main>
+<script>
+    let selectedPreference = '';
+
+    function updateLevelDescription(val) {
+        const descEl = document.getElementById('level-description');
+        const descriptions = {
+            'beginner': '기초 개념부터 차근차근',
+            'intermediate': '핵심 원리 이해와 심화',
+            'advanced': '전문가 수준의 실전 문제'
+        };
+        descEl.classList.add('description-change');
+        setTimeout(() => {
+            descEl.textContent = descriptions[val];
+            descEl.classList.remove('description-change');
+        }, 200);
+    }
+
+    function hideAllStates() {
+        ['state-initial', 'state-loading-questions', 'state-questions', 'state-loading-build', 'state-result'].forEach(id => {
+            document.getElementById(id).classList.add('hidden');
+        });
+    }
+
+    // Step 1 -> Step 2
+    function startGenerationFlow() {
+        const target = document.getElementById('study-target').value;
+        if (!target) {
+            alert('학습 대상을 입력해주세요.');
+            return;
+        }
+
+        hideAllStates();
+        const container = document.getElementById('display-container');
+        const loadingScreen = document.getElementById('state-loading-questions');
+        loadingScreen.classList.remove('hidden');
+        container.classList.add('justify-center');
+        container.classList.remove('justify-start');
+
+        let progress = 0;
+        const progressFill = document.getElementById('progress-fill-1');
+        const progressText = document.getElementById('progress-percent-1');
+
+        const interval = setInterval(() => {
+            progress += 2;
+            progressFill.style.width = `${progress}%`;
+            progressText.textContent = `${progress}%`;
+
+            if (progress >= 100) {
+                clearInterval(interval);
+                setTimeout(showQuestions, 500);
+            }
+        }, 30);
+    }
+
+    // Step 2 -> Step 3
+    function showQuestions() {
+        hideAllStates();
+        const container = document.getElementById('display-container');
+        const questionScreen = document.getElementById('state-questions');
+        questionScreen.classList.remove('hidden');
+        container.classList.add('justify-start');
+        container.classList.remove('justify-center');
+    }
+
+    function selectPref(btn, pref) {
+        document.querySelectorAll('.q-pref-btn').forEach(b => {
+            b.classList.remove('bg-primary', 'text-on-primary', 'border-primary');
+            b.classList.add('bg-white/40', 'text-on-background', 'border-outline-variant/40');
+        });
+        btn.classList.remove('bg-white/40', 'text-on-background', 'border-outline-variant/40');
+        btn.classList.add('bg-primary', 'text-on-primary', 'border-primary');
+        selectedPreference = pref;
+    }
+
+    // Step 3 -> Step 4
+    function confirmQuestions() {
+        hideAllStates();
+        const container = document.getElementById('display-container');
+        const loadingBuild = document.getElementById('state-loading-build');
+        loadingBuild.classList.remove('hidden');
+        container.classList.add('justify-center');
+        container.classList.remove('justify-start');
+
+        let progress = 0;
+        const progressFill = document.getElementById('progress-fill-2');
+        const progressText = document.getElementById('progress-percent-2');
+
+        const interval = setInterval(() => {
+            progress += 1;
+            progressFill.style.width = `${progress}%`;
+            progressText.textContent = `${progress}%`;
+
+            if (progress >= 100) {
+                clearInterval(interval);
+                setTimeout(showFinalResult, 500);
+            }
+        }, 25);
+    }
+
+    // Step 4 -> Final Result
+    function showFinalResult() {
+        const targetInput = document.getElementById('study-target').value;
+        const goalInput = document.getElementById('q-goal').value || '종합적인 실력 향상';
+        const timeInput = document.getElementById('q-time').value;
+        const prefText = selectedPreference === 'video' ? '시각적 학습 중심' : '심도 있는 텍스트 학습 중심';
+
+        hideAllStates();
+        const container = document.getElementById('display-container');
+        const resultScreen = document.getElementById('state-result');
+        const markdownBody = document.getElementById('markdown-body');
+        const resultTitle = document.getElementById('result-title');
+
+        resultScreen.classList.remove('hidden');
+        container.classList.add('justify-start');
+        container.classList.remove('justify-center');
+        
+        resultTitle.textContent = `${targetInput} 마스터 로드맵`;
+
+        markdownBody.innerHTML = `
+            <h1>${targetInput} 학습을 위한 12주 완성 플랜</h1>
+            <p>설정하신 <strong>${goalInput}</strong> 목표와 하루 <strong>${timeInput}시간</strong> 투자에 최적화된 <strong>${prefText}</strong> 커리큘럼입니다.</p>
+            
+            <div class="card-note">
+                <strong>💡 커스터마이징 팁:</strong> ${selectedPreference === 'video' ? '주요 유튜브 강의와 인터랙티브 코스 위주로 구성했습니다.' : '공식 문서와 기술 서적, 기술 블로그 아티클 위주로 구성했습니다.'}
+            </div>
+
+            <h2>Phase 1: 기초 다지기 (1-4주차)</h2>
+            <p>목표: 핵심 개념과 기본 메커니즘을 완벽하게 이해합니다.</p>
+            <ul>
+                <li><strong>1주차:</strong> 기본 환경 구축 및 첫 걸음 (Key concepts)</li>
+                <li><strong>2주차:</strong> 데이터의 흐름과 구조 파악</li>
+                <li><strong>3주차:</strong> 주요 알고리즘과 로직의 응용</li>
+                <li><strong>4주차:</strong> 모듈화와 코드의 재사용성 극대화</li>
+            </ul>
+
+            <blockquote>
+                "하루 ${timeInput}시간의 몰입은 12주 후 놀라운 변화를 가져옵니다. 포기하지 마세요."
+            </blockquote>
+
+            <h2>Phase 2: 심화 프로젝트 (5-8주차)</h2>
+            <p>목표: 배운 내용을 바탕으로 실제 결과물을 만들어봅니다.</p>
+            <ul>
+                <li><strong>5주차:</strong> 복합적인 기능 설계 및 구현</li>
+                <li><strong>6주차:</strong> 외부 API 연동 및 비동기 처리</li>
+                <li><strong>7주차:</strong> 성능 최적화와 리팩토링 기법</li>
+                <li><strong>8주차:</strong> [미션] 핵심 기능을 담은 미니 프로젝트 완료</li>
+            </ul>
+
+            <h2>Phase 3: 실전 최적화 (9-12주차)</h2>
+            <p>목표: 완성도를 높이고 실전 경쟁력을 갖춥니다.</p>
+            <ul>
+                <li><strong>9주차:</strong> 최신 트렌드/라이브러리 적용</li>
+                <li><strong>10주차:</strong> 테스팅 및 디버깅 심화</li>
+                <li><strong>11주차:</strong> 최종 프로젝트 고도화 (UI/UX 개선)</li>
+                <li><strong>12주차:</strong> 성과 정리 및 학습 결과 공유 (포트폴리오)</li>
+            </ul>
+
+            <div class="card-note">
+                <strong>📚 추천 학습 자원:</strong>
+                <ul class="mb-0 mt-2">
+                    <li>${targetInput} 공식 레퍼런스 가이드</li>
+                    <li>주간 기술 뉴스레터 구독</li>
+                    <li>관련 분야 전문 커뮤니티 활동 추천</li>
+                </ul>
+            </div>
+        `;
+    }
+
+    function resetView() {
+        hideAllStates();
+        const container = document.getElementById('display-container');
+        document.getElementById('state-initial').classList.remove('hidden');
+        container.classList.add('justify-center');
+        container.classList.remove('justify-start');
+        
+        document.getElementById('study-target').value = '';
+        document.getElementById('q-goal').value = '';
+        document.getElementById('progress-fill-1').style.width = '0%';
+        document.getElementById('progress-fill-2').style.width = '0%';
+        document.querySelectorAll('.q-pref-btn').forEach(b => {
+            b.classList.remove('bg-primary', 'text-on-primary', 'border-primary');
+            b.classList.add('bg-white/40', 'text-on-background', 'border-outline-variant/40');
+        });
+        selectedPreference = '';
+    }
+
+    // Modal Logic
+    function openEmailModal() {
+        const modal = document.getElementById('email-modal-overlay');
+        const emailForm = document.getElementById('email-form');
+        const successMsg = document.getElementById('email-success-msg');
+        const submitBtn = document.getElementById('email-submit-btn');
+        const emailInput = document.getElementById('email-input');
+        const modalTitle = document.getElementById('modal-header-title');
+        
+        // Reset states
+        emailForm.style.display = 'flex';
+        emailForm.style.opacity = '1';
+        successMsg.classList.remove('active');
+        modalTitle.textContent = 'SEND TO EMAIL';
+        
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'SUBMIT';
+        emailInput.value = '';
+        
+        modal.classList.add('active');
+    }
+
+    function closeEmailModal(event) {
+        const modal = document.getElementById('email-modal-overlay');
+        modal.classList.remove('active');
+    }
+
+    function handleEmailSubmit() {
+        const email = document.getElementById('email-input').value;
+        const submitBtn = document.getElementById('email-submit-btn');
+        const emailForm = document.getElementById('email-form');
+        const successMsg = document.getElementById('email-success-msg');
+        const modalTitle = document.getElementById('modal-header-title');
+
+        if (!email || !email.includes('@')) {
+            alert('유효한 이메일 주소를 입력해주세요.');
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = '전송 중...';
+
+        // Simulate sending process
+        setTimeout(() => {
+            // 1. Hide form
+            emailForm.style.opacity = '0';
+            
+            setTimeout(() => {
+                emailForm.style.display = 'none';
+                modalTitle.textContent = 'SUCCESS';
+                
+                // 2. Show success message with fade-in animation
+                successMsg.classList.add('active');
+                
+                // Close modal automatically after some time
+                setTimeout(() => {
+                    closeEmailModal();
+                }, 3000);
+            }, 300);
+        }, 1200);
+    }
+
+    function copyResult() {
+        const content = document.getElementById('markdown-body').innerText;
+        navigator.clipboard.writeText(content).then(() => {
+            alert('커리큘럼 내용이 클립보드에 복사되었습니다.');
+        });
+    }
+</script>
+
+
+</body></html>

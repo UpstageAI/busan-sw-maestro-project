@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>VisaGuide AI · 워크플로우 실시간 트레이스</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Archivo+Expanded:wght@600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  :root {
+    --navy:#16223D; --navy-2:#0E1830;
+    --paper:#ECEFF5; --surface:#FFFFFF;
+    --ink:#131826; --muted:#5A6379;
+    --line:#DCE2EE; --line-2:#E8ECF4;
+    --azure:#2B57E6; --azure-soft:#E7EDFD; --azure-ink:#1E40C0;
+    --stamp:#D23E32;
+    --go:#1F9D6B; --go-soft:#E3F3EC; --go-ink:#0F7A50;
+    --notice:#B26A0E; --notice-bg:#FBF1DC; --notice-line:#EBD8B0; --notice-ink:#8A540B;
+    --bad:#C8442E; --bad-soft:#FBE6E1; --bad-ink:#A2331F;
+    --s-text:#C5D0EC; --s-dim:#8C9BC4; --s-line:rgba(157,180,255,.14);
+    /* 노드 소스 카테고리 */
+    --llm:#6D4AD6; --llm-soft:#ECE6FB; --llm-ink:#4A2F9E;
+    /* 레거시 별칭(인라인 var 참조 보호) */
+    --accent:#2B57E6; --ok:#1F9D6B; --warn:#B26A0E; --idle:#C3CCDD; --err:#C8442E;
+    --shadow:0 1px 2px rgba(19,24,38,.05), 0 12px 30px rgba(19,24,38,.09);
+    --shadow-sm:0 1px 2px rgba(19,24,38,.05), 0 4px 12px rgba(19,24,38,.05);
+    --r:12px; --r-sm:9px; --r-lg:14px;
+    --display:"Archivo Expanded","Archivo",sans-serif;
+    --grotesk:"Archivo",sans-serif;
+    --body:"Pretendard","Archivo",system-ui,sans-serif;
+    --mono:"Space Mono",ui-monospace,monospace;
+  }
+  * { box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body { background:var(--paper); color:var(--ink); font-size:14px; line-height:1.6;
+    font-family:var(--body); -webkit-font-smoothing:antialiased; word-break:keep-all; min-height:100vh; }
+
+  /* ===== 네이비 발급기관 헤더 밴드 ===== */
+  header.band { position:relative; display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    padding:13px 22px; color:#fff; border-bottom:1px solid rgba(0,0,0,.3);
+    background:
+      repeating-radial-gradient(circle at 22% 18%, transparent 0 10px, rgba(255,255,255,.022) 10px 11px),
+      linear-gradient(115deg,var(--navy),var(--navy-2)); }
+  .logo{ width:34px;height:34px;border-radius:9px;flex:0 0 auto; display:grid; place-items:center;
+    background:var(--surface); color:var(--navy); font-family:var(--display); font-weight:700; font-size:17px;
+    box-shadow:0 2px 0 var(--stamp), inset 0 0 0 1px rgba(255,255,255,.6); }
+  .brand{ display:flex; flex-direction:column; line-height:1.12; min-width:0; }
+  .wordmark{ font-family:var(--display); font-weight:700; font-size:14px; letter-spacing:.14em; white-space:nowrap; }
+  .wordmark .ai{ color:#9DB4FF; }
+  .brand .sub{ font-family:var(--mono); font-size:9px; letter-spacing:.13em; color:var(--s-dim); margin-top:3px; }
+  .band .sep{ width:1px; height:28px; background:rgba(157,180,255,.22); margin:0 2px; }
+  .band .ptitle { font-family:var(--grotesk); font-weight:700; font-size:15.5px; letter-spacing:-.01em; }
+  .band .right { margin-left:auto; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .back { display:inline-flex; align-items:center; gap:5px; text-decoration:none; font-size:11.5px; font-weight:600;
+    color:var(--s-text); border:1px solid var(--s-line); background:rgba(157,180,255,.08); padding:5px 11px; border-radius:999px; }
+  .back:hover { background:rgba(157,180,255,.18); color:#fff; }
+  .badge { font-family:var(--mono); font-size:10.5px; letter-spacing:.03em; color:var(--s-dim); border:1px solid var(--s-line);
+    padding:4px 10px; border-radius:999px; background:rgba(157,180,255,.07); white-space:nowrap; max-width:230px; overflow:hidden; text-overflow:ellipsis; }
+  .pill { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; padding:5px 11px; border-radius:999px;
+    border:1px solid var(--s-line); color:var(--s-text); background:rgba(157,180,255,.07); white-space:nowrap; }
+  .pill::before{ content:""; width:7px;height:7px;border-radius:50%; background:var(--s-dim); flex:0 0 auto; }
+  .pill.run { color:#BBD0FF; border-color:rgba(43,87,230,.6); background:rgba(43,87,230,.2); }
+  .pill.run::before{ background:#7DA0FF; box-shadow:0 0 0 0 rgba(125,160,255,.5); animation:pulse 1.4s ease-out infinite; }
+  .pill.done { color:#A7EBC8; border-color:rgba(63,185,80,.5); background:rgba(31,157,107,.18); }
+  .pill.done::before{ background:#46d394; }
+  .pill.err { color:#FFB4A6; border-color:rgba(200,68,46,.55); background:rgba(200,68,46,.2); }
+  .pill.err::before{ background:#FF7A5E; }
+  .pill.on { color:#A7EBC8; border-color:rgba(63,185,80,.5); background:rgba(31,157,107,.18); }
+  .pill.on::before{ background:#46d394; box-shadow:0 0 0 0 rgba(70,211,148,.5); animation:pulseGo 1.6s ease-out infinite; }
+
+  .wrap { padding:18px 22px 40px; max-width:1320px; margin:0 auto; }
+  .inputbar { display:flex; gap:8px; margin-bottom:8px; }
+  .inputbar input { flex:1; background:var(--surface); border:1px solid var(--line); color:var(--ink);
+    padding:12px 14px; border-radius:var(--r); font-size:14px; font-family:var(--body); box-shadow:var(--shadow-sm); transition:border-color .18s, box-shadow .18s; }
+  .inputbar input::placeholder{ color:var(--muted); }
+  .inputbar input:focus { outline:none; border-color:var(--azure); box-shadow:0 0 0 3px var(--azure-soft), var(--shadow-sm); }
+  .inputbar button { background:linear-gradient(170deg,#1D2F54,var(--navy)); color:#fff; border:0; padding:0 20px;
+    border-radius:var(--r); font-family:var(--grotesk); font-weight:700; cursor:pointer; box-shadow:0 4px 12px rgba(19,24,38,.22); transition:transform .15s; }
+  .inputbar button:hover { transform:translateY(-1px); }
+  .inputbar button:active { transform:scale(.97); }
+  .inputbar button:focus-visible { outline:2px solid var(--azure); outline-offset:2px; }
+  .inputbar button:disabled { opacity:.45; cursor:not-allowed; box-shadow:none; transform:none; }
+  .chips { display:flex; gap:7px; flex-wrap:wrap; margin-bottom:14px; }
+  .chip { font-size:12.5px; color:var(--ink); border:1px solid var(--line); background:var(--surface); padding:7px 12px;
+    border-radius:var(--r-sm); cursor:pointer; box-shadow:var(--shadow-sm); transition:all .18s ease; }
+  .chip:hover { color:var(--azure-ink); border-color:var(--azure); transform:translateY(-1px); }
+  .chip:focus-visible { outline:2px solid var(--azure); outline-offset:2px; }
+
+  .grid { display:grid; grid-template-columns:1fr; gap:16px; }
+  .card { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); min-width:0;
+    box-shadow:var(--shadow-sm); overflow:hidden; }
+  .card h2 { font-family:var(--grotesk); font-size:13px; margin:0; padding:12px 16px; border-bottom:1px solid var(--line);
+    color:var(--navy); font-weight:700; letter-spacing:-.005em; background:linear-gradient(180deg,#F7F9FD,transparent); }
+  .card .body { padding:13px 15px; }
+
+  /* ── 2D 그래프 = 공식 처리 절차 도식 ── */
+  #graphScroll { overflow:auto; max-width:100%; }
+  #graphSizer { position:relative; margin:0 auto; }
+  #graphWrap { position:relative; transform-origin:top left; }
+  .gtoolbar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:9px 15px;
+    border-bottom:1px solid var(--line); font-size:12px; color:var(--muted); background:#FAFBFE; }
+  .gtoolbar button { background:var(--surface); color:var(--ink); border:1px solid var(--line);
+    border-radius:7px; padding:4px 11px; cursor:pointer; font-family:var(--grotesk); font-size:12px; font-weight:600; transition:all .15s; }
+  .gtoolbar button:hover { border-color:var(--azure); color:var(--azure-ink); }
+  .gtoolbar button:focus-visible { outline:2px solid var(--azure); outline-offset:1px; }
+  .gtoolbar #zVal { min-width:46px; text-align:center; color:var(--ink); font-family:var(--mono); font-variant-numeric:tabular-nums; }
+  .gtoolbar .zlbl { color:var(--muted); font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; }
+  .gtoolbar .sep { width:1px; height:16px; background:var(--line); margin:0 4px; }
+  .gtoolbar .ahint { margin-left:auto; color:var(--muted); font-size:11px; }
+  .gtoolbar .ahint b{ color:var(--azure-ink); }
+  #edges { position:absolute; top:0; left:0; overflow:visible; z-index:0; }
+  #edgesFlow { position:absolute; top:0; left:0; overflow:visible; z-index:2; pointer-events:none; }
+  .edge { stroke:#D4DBE8; stroke-width:1.8; fill:none; transition:stroke .14s, stroke-width .14s, opacity .14s; }
+  .edge.cond { stroke-dasharray:6 4; }
+  .edge.hi { stroke:var(--azure); stroke-width:2.6; opacity:1; }   /* 노드 hover → 연결 간선 강조 */
+  .edge.dim { opacity:.3; }                                        /* 그 외 간선 흐리게 */
+  .edge.flow { stroke:var(--azure); stroke-width:3.5; stroke-dasharray:9 6; animation:dash .7s linear infinite; }
+  @keyframes dash { to { stroke-dashoffset:-30; } }
+  .elabel { position:absolute; z-index:3; transform:translate(-50%,-50%); font-family:var(--mono); font-size:10px; color:var(--muted);
+    background:var(--surface); border:1px solid var(--line); padding:2px 7px; border-radius:999px; white-space:nowrap; pointer-events:none;
+    opacity:0; transition:opacity .14s ease; }                     /* 평소 숨김 → 노드 hover 시에만(밀도↓) */
+  .elabel.show { opacity:1; }
+  .elabel.data { opacity:1; z-index:5; color:var(--azure-ink); border-color:#CFDBFB; background:var(--azure-soft); font-weight:700; }
+  .gnode { position:absolute; z-index:1; border:1px solid var(--line); border-radius:var(--r); background:var(--surface);
+    padding:9px 11px; cursor:pointer; transition:border-color .2s, box-shadow .2s, opacity .2s, transform .2s; opacity:.9; overflow:hidden; box-shadow:var(--shadow-sm); }
+  .gnode:hover { border-color:var(--azure); z-index:7; box-shadow:0 0 0 2px var(--azure-soft), 0 10px 26px 4px rgba(19,24,38,.16); opacity:1; }
+  .gnode .r1 { display:flex; align-items:center; gap:7px; }
+  .gnode .ico { font-size:15px; line-height:1; }
+  .gnode .nm { font-family:var(--grotesk); font-weight:700; font-size:13px; color:var(--ink); }
+  .gnode .dot { margin-left:auto; width:9px; height:9px; border-radius:50%; background:#C3CCDD; flex:none; }
+  .gnode .brief { margin-top:6px; display:flex; gap:4px; flex-wrap:wrap; align-items:center; }
+  .gnode .gist { margin-top:6px; font-size:10.5px; color:var(--muted); white-space:nowrap; text-overflow:ellipsis; overflow:hidden; font-family:var(--mono); }
+  .gnode.active { z-index:6; opacity:1; border-color:var(--azure); transform:scale(1.05);
+    box-shadow:0 0 0 3px var(--azure-soft), 0 8px 22px 2px rgba(43,87,230,.22); }
+  .gnode.active .dot { background:var(--azure); box-shadow:0 0 0 0 rgba(43,87,230,.4); animation:pulse 1.2s infinite; }
+  .gnode.done { z-index:5; opacity:1; border-color:var(--go); transform:scale(1.02);
+    box-shadow:0 0 0 2px var(--go-soft), var(--shadow-sm); }
+  .gnode.done .dot { background:var(--go); }
+  .gnode.skipped { z-index:1; opacity:.4; filter:saturate(.45); }
+  @keyframes pulse { 0%{ box-shadow:0 0 0 0 rgba(43,87,230,.4);} 100%{ box-shadow:0 0 0 7px rgba(43,87,230,0);} }
+  @keyframes pulseGo { 0%{ box-shadow:0 0 0 0 rgba(70,211,148,.5);} 100%{ box-shadow:0 0 0 6px rgba(70,211,148,0);} }
+  .src { font-family:var(--grotesk); font-size:9.5px; padding:2px 7px; border-radius:6px; border:1px solid; font-weight:700; letter-spacing:.02em; }
+  .src.LLM{ color:var(--llm-ink); border-color:#D9CDF6; background:var(--llm-soft); }
+  .src.VectorDB{ color:var(--go-ink); border-color:#BFE6D2; background:var(--go-soft); }
+  .src.WebSearch{ color:var(--azure-ink); border-color:#CFDBFB; background:var(--azure-soft); }
+  .src.Rule{ color:var(--notice-ink); border-color:var(--notice-line); background:var(--notice-bg); }
+  .src.State{ color:var(--muted); border-color:var(--line); background:#EEF1F7; }
+  .legend { font-size:11px; color:var(--muted); display:flex; gap:14px; margin-top:12px; flex-wrap:wrap; }
+  .legend i { width:9px; height:9px; border-radius:50%; display:inline-block; margin-right:4px; vertical-align:middle; }
+  .legend .ln { width:16px; height:0; border-top:2px solid var(--idle); display:inline-block; margin-right:4px; vertical-align:middle; }
+  .legend .ln.cond { border-top-style:dashed; }
+
+  /* ── 단계별 파이프라인 ── */
+  #timeline { min-height:80px; display:grid; align-content:start; gap:12px 14px;
+    grid-template-columns:repeat(auto-fill, minmax(330px, 1fr)); }
+  #timeline > .hint { grid-column:1 / -1; }
+  .step { border:1px solid var(--line); border-left:3px solid var(--azure); border-radius:var(--r);
+    background:var(--surface); padding:10px 13px 12px; margin:0; position:relative; box-shadow:var(--shadow-sm); }
+  .step::before { display:none; }
+  .step .head { display:flex; align-items:baseline; gap:8px; }
+  .step .head .nm { font-family:var(--grotesk); font-weight:700; color:var(--ink); }
+  .step .head .ms { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--muted); }
+  .step .hl { font-size:11.5px; color:var(--azure-ink); margin:4px 0; }
+  @media (max-width:760px){
+    #timeline { grid-template-columns:1fr; max-height:62vh; overflow:auto; }
+  }
+  table.io { width:100%; border-collapse:collapse; margin-top:6px; }
+  table.io td { font-size:12px; vertical-align:top; padding:4px 6px; border-bottom:1px solid var(--line-2); }
+  table.io td.k { color:var(--muted); white-space:nowrap; width:38%; font-family:var(--mono); font-size:11px; }
+  table.io td.v { color:var(--ink); word-break:break-word; white-space:pre-wrap; font-family:var(--mono); font-size:11px; }
+  details.delta { margin-top:7px; }
+  details.delta summary { cursor:pointer; font-family:var(--mono); font-size:11px; color:var(--muted); }
+  details.delta summary:hover { color:var(--azure-ink); }
+  pre.json { background:#F7F9FD; border:1px solid var(--line); border-radius:7px; padding:9px; font-size:11px;
+    overflow-x:auto; color:#2B3550; white-space:pre-wrap; word-break:break-word; font-family:var(--mono); }
+  .hint { color:var(--muted); font-size:12.5px; }
+  .hint b { color:var(--ink); }
+
+  /* ── ③ 최종 답변 = 공식 안내서 카드 ── */
+  #answer { margin-top:16px; }
+  .answer-card > h2 { display:flex; align-items:center; gap:10px; padding:15px 18px; border-bottom:none; color:#fff;
+    background:
+      repeating-radial-gradient(circle at 12% 80%, transparent 0 8px, rgba(255,255,255,.025) 8px 9px),
+      linear-gradient(180deg,var(--navy),var(--navy-2)); }
+  .answer-card .ab-eyebrow { font-family:var(--grotesk); font-size:10px; font-weight:600; letter-spacing:.2em; color:#9DB4FF; }
+  .answer-card .ab-no { margin-left:auto; font-family:var(--mono); font-size:10.5px; color:var(--s-dim); }
+  .answer-body { padding:6px 20px 18px; counter-reset:vgsec; }
+  .answer-body > :first-child{ margin-top:.3rem; }
+  /* 섹션 헤더 — 메인 app.html .doc-body 와 동일(좌측 막대 없이 번호 거터) */
+  .answer-body h1, .answer-body h2, .answer-body h3 { all:unset; counter-increment:vgsec; display:block;
+    font-family:var(--grotesk); font-size:0.96rem; font-weight:600; color:var(--navy); letter-spacing:-.01em;
+    margin:1.05rem 0 .5rem; position:relative; padding-left:1.3rem; }
+  .answer-body h1::before, .answer-body h2::before, .answer-body h3::before { content:counter(vgsec,decimal-leading-zero);
+    font-family:var(--mono); font-size:.76rem; color:var(--azure); font-weight:700; position:absolute; left:0; top:.06em; }
+  .answer-body h4 { margin:.7rem 0 .35rem; font-size:14px; font-weight:700; color:var(--navy); }
+  .answer-body p { margin:.45rem 0; font-size:14.5px; color:var(--ink); line-height:1.72; }
+  .answer-body b, .answer-body strong { color:var(--azure-ink); font-weight:600; }
+  .answer-body a { color:var(--azure-ink); text-decoration:underline; text-underline-offset:2px; font-weight:500; }
+  .answer-body ul { margin:.45rem 0; padding:0; list-style:none; display:flex; flex-direction:column; gap:7px; }
+  .answer-body ul > li { position:relative; padding-left:17px; font-size:14px; color:var(--ink); line-height:1.6; }
+  .answer-body ul > li::before { content:""; position:absolute; left:0; top:7px; width:6px;height:6px;border-radius:1px;
+    background:var(--azure); transform:rotate(45deg); }
+  /* 중첩 목록(메인 .doc-body 와 동일) */
+  .answer-body li > ul { margin:.4rem 0 .15rem; padding-left:2px; }
+  .answer-body li > ul > li { font-size:13.5px; color:var(--muted); }
+  .answer-body li > ul > li::before { background:var(--line); opacity:.95; top:7px; }
+  .answer-body li > ul > li strong { color:var(--navy); }
+  /* 순서 목록 → 실제 번호 + 모노 애저 마커 */
+  .answer-body ol { margin:.45rem 0; padding-left:1.6rem; list-style:decimal; display:flex; flex-direction:column; gap:7px; }
+  .answer-body ol > li { font-size:14px; color:var(--ink); line-height:1.6; padding-left:.2rem; }
+  .answer-body ol > li::marker { font-family:var(--mono); font-size:.78rem; color:var(--azure); font-weight:700; }
+  .answer-body ol li > ul { margin-top:.35rem; }
+  .answer-body code { font-family:var(--mono); font-size:.9em; background:var(--azure-soft); color:var(--azure-ink); padding:1px 5px; border-radius:4px; }
+  /* 인용 → 앰버 주의 박스(메인과 동일) */
+  .answer-body blockquote { margin:12px 0; background:var(--notice-bg); border:1px solid var(--notice-line); border-left:3px solid var(--notice);
+    border-radius:8px; padding:11px 14px 11px 38px; position:relative; }
+  .answer-body blockquote::before { content:""; position:absolute; left:13px; top:13px; width:16px; height:16px; background:var(--notice);
+    -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 8v4.5M12 16h.01' stroke-linecap='round'/%3E%3C/svg%3E") center/contain no-repeat;
+    mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 8v4.5M12 16h.01' stroke-linecap='round'/%3E%3C/svg%3E") center/contain no-repeat; }
+  .answer-body blockquote p { margin:0; font-size:13.5px; color:#6e4d12; line-height:1.65; }
+  .answer-body blockquote p + p { margin-top:.4rem; }
+  .answer-body blockquote strong, .answer-body blockquote b { color:var(--notice-ink); font-weight:700; }
+  .answer-body blockquote a { color:var(--notice-ink); }
+  /* 섹션 본문을 번호 우측 칼럼으로 들여쓰기(메인과 동일 정렬) */
+  .answer-body > p, .answer-body > ul, .answer-body > ol, .answer-body > blockquote, .answer-body > h4, .answer-body > pre, .answer-body > table { margin-left:1.3rem; }
+  .answer-body hr { border:0; border-top:1px solid var(--line-2); margin:14px 0; }
+
+  /* ── 모달(노드 상세) ── */
+  #modal { position:fixed; inset:0; background:rgba(14,24,48,.45); display:none; align-items:center; justify-content:center; z-index:50;
+    backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px); }
+  #modal.open { display:flex; }
+  .modal-card { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); width:min(560px,92vw);
+    max-height:86vh; overflow:auto; box-shadow:0 24px 60px rgba(14,24,48,.35); }
+  .modal-card .mh { padding:15px 17px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:9px;
+    background:linear-gradient(180deg,#F7F9FD,transparent); }
+  .modal-card .mh b { font-family:var(--grotesk); color:var(--navy); font-size:15px; }
+  .modal-card .mh .x { margin-left:auto; cursor:pointer; color:var(--muted); font-size:20px; line-height:1; }
+  .modal-card .mh .x:hover { color:var(--ink); }
+  .modal-card .mb { padding:15px 17px; }
+  .modal-card .mb .desc { color:var(--muted); font-size:12.5px; margin-bottom:10px; }
+  .modal-card .mb code { font-family:var(--mono); font-size:11.5px; background:var(--azure-soft); color:var(--azure-ink); padding:1px 5px; border-radius:4px; }
+  .modal-card .mb h3 { font-family:var(--grotesk); color:var(--navy); }
+
+  @keyframes rise{ from{ opacity:0; transform:translateY(9px);} to{ opacity:1; transform:none;} }
+  @media (max-width:560px){
+    header.band{ padding:11px 14px; gap:9px; }
+    .band .sep{ display:none; }
+    .band .ptitle{ font-size:14px; }
+    .wrap{ padding:14px 13px 30px; }
+  }
+  @media (prefers-reduced-motion:reduce){ *,*::before,*::after{ animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body>
+<header class="band">
+  <a class="back" href="/trace" title="모든 세션 통합 허브로 이동">← 통합 허브</a>
+  <div class="logo">V</div>
+  <div class="brand">
+    <span class="wordmark">VISAGUIDE<span class="ai"> AI</span></span>
+    <span class="sub">SESSION TRACE · 세션 트레이스</span>
+  </div>
+  <span class="sep"></span>
+  <span class="ptitle">세션 워크플로우 트레이스</span>
+  <div class="right">
+    <span id="sessBadge" class="badge">세션: —</span>
+    <span id="livePill" class="pill">연결 대기</span>
+    <span id="statusPill" class="pill">대기 중</span>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="inputbar">
+    <input id="q" type="text" placeholder="질문 입력 (예: 남아공에서 취업하고 싶어요 / 캐나다 소프트웨어 개발자 취업)" />
+    <button id="run">실행 ▶</button>
+  </div>
+  <div class="chips" id="chips"></div>
+  <p class="hint" style="margin:-4px 0 14px">
+    💡 이 화면은 <b>고객 화면(:3000/)에서 입력한 질문</b>도 실시간으로 함께 표시합니다(위 연결 표시가 켜져 있을 때).
+  </p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>① LangGraph 데이터 흐름 (노드를 클릭하면 상세)</h2>
+      <div class="gtoolbar">
+        <button id="orientBtn" title="가로(행)/세로(열) 배치 전환">⇄ <span id="orientTxt">자동</span></button>
+        <span class="sep"></span>
+        <span class="zlbl">확대</span>
+        <button id="zOut" title="축소">−</button>
+        <span id="zVal">100%</span>
+        <button id="zIn" title="확대">+</button>
+        <button id="zFit" title="모든 노드가 보이도록 맞춤">맞춤</button>
+        <button id="zReset" title="100%로">100%</button>
+        <span class="ahint">💡 2분할 등 좁은 화면에선 <b>맞춤</b>으로 전체 노드를 한눈에</span>
+      </div>
+      <div class="body">
+        <div id="graphScroll"><div id="graphSizer"><div id="graphWrap">
+          <svg id="edges">
+            <defs>
+              <marker id="arrow" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
+                <path d="M0,0 L9,4.5 L0,9 Z" fill="#AEB8CC"/></marker>
+              <marker id="arrowFlow" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
+                <path d="M0,0 L9,4.5 L0,9 Z" fill="#2B57E6"/></marker>
+            </defs>
+          </svg>
+          <!-- 실행 경로 화살표 전용 오버레이(비활성 노드 위에 그려 가려짐 방지) -->
+          <svg id="edgesFlow">
+            <defs>
+              <marker id="arrowFlowTop" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
+                <path d="M0,0 L9,4.5 L0,9 Z" fill="#2B57E6"/></marker>
+            </defs>
+          </svg>
+        </div></div></div>
+        <div class="legend">
+          <span><i style="background:var(--idle)"></i>대기</span>
+          <span><i style="background:var(--accent)"></i>실행 중</span>
+          <span><i style="background:var(--ok)"></i>완료</span>
+          <span><i style="background:var(--idle);opacity:.4"></i>미실행(분기)</span>
+          <span><span class="ln"></span>고정 간선</span>
+          <span><span class="ln cond"></span>조건 분기</span>
+          <span><span class="ln" style="border-color:var(--accent)"></span>이번 실행 경로</span>
+          <span style="margin-left:auto"><b style="color:var(--azure-ink)">💡 노드에 올리면</b> 연결 간선·조건 라벨 표시</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>② 단계별 데이터 정제 타임라인</h2>
+      <div class="body">
+        <div id="timeline"><p class="hint">질문을 입력하면 각 노드가 어떤 plain data(질의어·벡터DB·웹검색)를 참조하고 어떻게 정제하는지 단계별로 표시됩니다.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card answer-card" id="answer" style="display:none">
+    <h2><span class="ab-eyebrow">VISA GUIDANCE</span><span>③ 사용자에게 반환되는 최종 답변</span><span class="ab-no">참고용 안내서</span></h2>
+    <div class="answer-body" id="answerBody"></div>
+  </div>
+</div>
+
+<div id="modal"><div class="modal-card">
+  <div class="mh"><span id="mIco"></span><b id="mTitle"></b><span class="x" id="mClose">✕</span></div>
+  <div class="mb" id="mBody"></div>
+</div></div>
+
+<script>
+var API_BASE=(window.__API_BASE__||'http://localhost:8000').replace(/\/+$/,'');
+// 상대 경로(백엔드가 토폴로지로 돌려주는 paths)를 API_BASE 절대 URL 로 보정한다.
+// (Express 가 화면을 서빙하고 브라우저가 FastAPI 를 CORS 로 직접 호출하기 때문)
+function absolutize(p){ return /^https?:\/\//.test(p) ? p : API_BASE + p; }
+const SAMPLES = [
+  "캐나다에서 소프트웨어 개발자로 취업하고 싶어요",
+  "남아공에서 취업하고 싶어요",
+  "미국 관광 비자로 입국 후 체류 연장이 가능한가요?",
+  "일본 유학 비자 받으려면 어떻게 해야 하나요?",
+];
+let PATHS = { topology:API_BASE+"/graph/topology", stream:API_BASE+"/chat/stream", live:API_BASE+"/trace/live", run:API_BASE+"/trace/run" };
+const $ = (id)=>document.getElementById(id);
+const esc = (s)=>String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+// 이 페이지가 다루는 대화 세션 ID: 경로 /{sid}/trace 또는 쿼리 ?session_id=
+function deriveSessionId(){
+  const m = location.pathname.match(/^\/([^\/]+)\/trace\/?$/);
+  if(m && m[1] !== "trace") return decodeURIComponent(m[1]);
+  return new URLSearchParams(location.search).get("session_id") || null;
+}
+const SESSION_ID = deriveSessionId();
+
+let TOPO = null;            // {nodes,edges}
+let META = {};             // id -> node meta (label,icon,desc,sources,produces,source_labels)
+let POS = {};              // id -> {x,y,W,H,cx,cy} (real 노드만)
+let EDGE_PTS = {};         // "src__tgt" -> [{x,y}...] 간선 경로점(실행 플로우/hover 재사용)
+let EDGES_BY_NODE = {};    // nodeId -> ["src__tgt"...] (hover 시 연결 간선/라벨 강조)
+let DETAILS = {};          // id -> detail record (latest run)
+let curRunId = null;
+let prevExec = null;
+let answerAcc = "";        // 최종 답변 토큰 누적 버퍼
+let ORIENT_MODE = "auto";  // "auto" | "TB"(세로/열) | "LR"(가로/행)
+let CUR_ORIENT = "TB";     // 현재 렌더된 방향
+let ZOOM = 1, GW = 0, GH = 0;   // 줌 배율 + 그래프 원본 폭/높이
+let LAST_TOPO = null;
+let EXEC_SEQ = [];         // 이번 실행에서 거친 노드 순서(재배치/재렌더 시 재장식용)
+let EXEC_DONE = false;
+let _autoFitDone = false;  // 최초 로드 1회만 전체 노드가 보이도록 가로 맞춤(데스크탑 LR 한정)
+
+function setStatus(t,cls){ const p=$("statusPill"); p.textContent=t; p.className="pill"+(cls?" "+cls:""); }
+function setLive(t,cls){ const p=$("livePill"); p.textContent=t; p.className="pill"+(cls?" "+cls:""); }
+
+// ── 토폴로지 로드 ────────────────────────────────────────────────────────
+async function loadTopology(){
+  const r = await fetch(PATHS.topology);
+  const topo = await r.json();
+  // 백엔드 paths 는 동일 출처 기준 상대경로 → API_BASE 로 절대화해서 채택
+  if (topo.paths) { PATHS = {}; for (const k in topo.paths) PATHS[k] = absolutize(topo.paths[k]); }
+  TOPO = topo; META = {};
+  topo.nodes.forEach(n=>META[n.id]=n);
+  layoutAndRender(topo);
+}
+
+// ── 이 워크플로우는 고정 토폴로지 → 손으로 배치(가장 깔끔) ──────────────────
+// 노드별 a=깊이축 인덱스, c=분기축 레인(0=메인, 음수=위, 양수=아래).
+// 미등록 노드가 하나라도 있으면 autoLayout(자동)으로 폴백 → graph.py 확장성 유지.
+const FIXED_GRID = {
+  "__start__":          {a:0, c:0},
+  "intent_classifier":  {a:1, c:0},
+  "general_chat":       {a:2, c:-2},
+  "visa_rag_search":    {a:2, c:0},
+  "exception_handler":  {a:2, c:2},
+  "web_search_tool":    {a:3, c:0},
+  "search_quality_gate":{a:4, c:0},
+  "query_refiner":      {a:4, c:2},
+  "knowledge_writer":   {a:5, c:0},
+  "response_formatter": {a:6, c:0},
+  "__end__":            {a:7, c:0},
+};
+
+function computeLayout(nodes, edges, orient){
+  // 모든 노드가 고정 좌표에 정의돼 있으면 손배치, 아니면 자동 폴백
+  if(nodes.every(n=>FIXED_GRID[n.id])) return fixedLayout(nodes, edges, orient);
+  return autoLayout(nodes, edges, orient);
+}
+
+// 고정 좌표 + 직교 라우팅: 메인 파이프라인은 곧은 직선, 분기는 위/아래 레인,
+// 깊이를 건너뛰는 수렴/루프 간선은 노드를 피해 직교(ㄷ자) 버스로 우회한다.
+function fixedLayout(nodes, edges, orient){
+  const LR = orient!=="TB";
+  const W=176, H=86, PAD=18;
+  const AGAP = LR?244:150;     // 깊이축 간격
+  const CGAP = LR?96:250;      // 분기축(레인) 간격
+  const cMin=-3.7;
+  const aSize=LR?W:H, cSize=LR?H:W;
+  const aStart=(a)=> a*AGAP+PAD;
+  const cMid=(c)=> (c-cMin)*CGAP+PAD+cSize/2;
+  const ac=(al,cr)=> LR?{x:al,y:cr}:{x:cr,y:al};
+
+  const pos={};
+  nodes.forEach(n=>{ const f=FIXED_GRID[n.id], tl=ac(aStart(f.a), cMid(f.c)-cSize/2);
+    pos[n.id]={x:tl.x,y:tl.y,W,H,cx:tl.x+W/2,cy:tl.y+H/2}; });
+
+  const aEdge=(id,d)=>{ const f=FIXED_GRID[id]; return ac(aStart(f.a)+(d>0?aSize:0), cMid(f.c)); };
+  const cEdge=(id,d)=>{ const f=FIXED_GRID[id]; return ac(aStart(f.a)+aSize/2, cMid(f.c)+(d>0?cSize/2:-cSize/2)); };
+
+  let down=0, up=0;
+  const routes = edges.filter(e=>FIXED_GRID[e.source]&&FIXED_GRID[e.target]).map(e=>{
+    const u=e.source, v=e.target, fu=FIXED_GRID[u], fv=FIXED_GRID[v], da=fv.a-fu.a;
+    let pts;
+    if(da===1){
+      pts=[ aEdge(u,1), aEdge(v,-1) ];                      // 인접: 곧은 직선(대각 허용)
+    } else if(da===0){
+      const dir=fv.c>fu.c?1:-1;
+      pts=[ cEdge(u,dir), cEdge(v,-dir) ];                  // 같은 깊이: 레인축 수직
+    } else if(da>1){
+      const viaUp=(u==="general_chat")||(u==="intent_classifier"&&v==="web_search_tool");
+      const s=aEdge(u,1), t=aEdge(v,-1);
+      const sA=LR?s.x:s.y, sC=LR?s.y:s.x, tA=LR?t.x:t.y, tC=LR?t.y:t.x;
+      const busC = viaUp ? cMid(-3-0.45*(up++)) : cMid(2.7+0.5*(down++));  // 위/아래 직교 버스
+      pts=[ s, ac(sA+16,sC), ac(sA+16,busC), ac(tA-16,busC), ac(tA-16,tC), t ];
+    } else {
+      const s=cEdge(u,1), t=cEdge(v,1);                     // 역방향 루프(재생성→웹검색)
+      const sA=LR?s.x:s.y, sC=LR?s.y:s.x, tA=LR?t.x:t.y, tC=LR?t.y:t.x;
+      const busC=cMid(2.7+0.5*(down++));
+      pts=[ s, ac(sA,busC), ac(tA,busC), t ];
+    }
+    return { source:u, target:v, label:e.label, conditional:!!e.conditional, back:fu.a>fv.a, chain:[u,v], pts };
+  });
+
+  let maxX=0,maxY=0;
+  Object.values(pos).forEach(p=>{ maxX=Math.max(maxX,p.x+W); maxY=Math.max(maxY,p.y+H); });
+  routes.forEach(rt=>rt.pts.forEach(p=>{ maxX=Math.max(maxX,p.x); maxY=Math.max(maxY,p.y); }));
+  return { pos, dpos:{}, routes, width:maxX+PAD, height:maxY+PAD };
+}
+
+// 레이어드 DAG 레이아웃(Sugiyama 축약) — 미등록 노드가 있을 때의 자동 폴백.
+//   ① 최장경로 랭킹  ② 장거리 간선에 더미 경유점 삽입(노드 관통 방지)
+//   ③ barycenter 정렬로 같은 계층 노드 순서 최적화(교차 최소화)
+function autoLayout(nodes, edges, orient){
+  const ids = nodes.map(n=>n.id);
+  const idset = new Set(ids);
+
+  // 1) back-edge(루프) 탐지 → 랭킹에서만 제외(그리기는 유지)
+  const adj={}; ids.forEach(id=>adj[id]=[]);
+  edges.forEach(e=>{ if(adj[e.source]&&idset.has(e.target)) adj[e.source].push(e.target); });
+  const vis={}; ids.forEach(id=>vis[id]=0);
+  const back=new Set();
+  const dfs=(u)=>{ vis[u]=1; for(const v of adj[u]){ if(vis[v]===1) back.add(u+">"+v); else if(vis[v]===0) dfs(v);} vis[u]=2; };
+  ids.forEach(id=>{ if(vis[id]===0) dfs(id); });
+
+  // 2) 최장경로 랭킹(back-edge 제외)
+  const succs={}, indeg={};
+  ids.forEach(id=>{succs[id]=[];indeg[id]=0;});
+  edges.forEach(e=>{
+    if(back.has(e.source+">"+e.target)) return;
+    if(succs[e.source]&&indeg[e.target]!==undefined){ succs[e.source].push(e.target); indeg[e.target]++; }
+  });
+  const rank={}; ids.forEach(id=>rank[id]=0);
+  const q=ids.filter(id=>indeg[id]===0);
+  while(q.length){ const u=q.shift(); (succs[u]||[]).forEach(v=>{ rank[v]=Math.max(rank[v],rank[u]+1); if(--indeg[v]===0) q.push(v); }); }
+  const maxRank=Math.max(0,...ids.map(id=>rank[id]));
+
+  // 3) 장거리 간선 분해: rank 차>1 이면 내부 계층마다 더미 경유점 생성
+  const rankNodes={}; for(let r=0;r<=maxRank;r++) rankNodes[r]=[];
+  nodes.forEach(n=>rankNodes[rank[n.id]].push(n.id));
+  const dummyRank={}; let dseq=0;
+  const routes=[];
+  edges.forEach(e=>{
+    const u=e.source, v=e.target;
+    if(rank[u]===undefined||rank[v]===undefined) return;
+    const chain=[u];
+    const lo=Math.min(rank[u],rank[v]), hi=Math.max(rank[u],rank[v]);
+    if(hi-lo>1){
+      const inner=[]; for(let r=lo+1;r<=hi-1;r++) inner.push(r);
+      if(rank[u]>rank[v]) inner.reverse();          // back-edge: u(고)→v(저) 방향 정렬
+      inner.forEach(r=>{ const d="__d"+(dseq++); dummyRank[d]=r; rankNodes[r].push(d); chain.push(d); });
+    }
+    chain.push(v);
+    routes.push({source:u, target:v, label:e.label, conditional:!!e.conditional, back:back.has(u+">"+v), chain});
+  });
+
+  // 4) barycenter 정렬(교차 최소화) — 더미 포함 인접 그래프
+  const rk=(id)=> dummyRank[id]!==undefined?dummyRank[id]:rank[id];
+  const up={}, dn={};
+  for(let r=0;r<=maxRank;r++) rankNodes[r].forEach(id=>{up[id]=[];dn[id]=[];});
+  routes.forEach(rt=>{
+    for(let i=0;i+1<rt.chain.length;i++){
+      let a=rt.chain[i], b=rt.chain[i+1];
+      if(rk(a)>rk(b)){ const t=a;a=b;b=t; }           // a=상위(rank 작음), b=하위
+      dn[a].push(b); up[b].push(a);
+    }
+  });
+  const ord={}; for(let r=0;r<=maxRank;r++) rankNodes[r].forEach((id,i)=>ord[id]=i);
+  const bary=(nb)=>{ if(!nb.length) return -1; let s=0; nb.forEach(x=>s+=ord[x]); return s/nb.length; };
+  for(let pass=0; pass<8; pass++){
+    const down = pass%2===0;
+    const from = down?1:maxRank-1, to = down?maxRank:0, st = down?1:-1;
+    for(let r=from; down?r<=to:r>=to; r+=st){
+      const arr=rankNodes[r];
+      const key={}; arr.forEach(id=>{ const b=bary(down?up[id]:dn[id]); key[id]= b<0?ord[id]:b; });
+      arr.sort((a,b)=> (key[a]-key[b]) || (ord[a]-ord[b]) );
+      arr.forEach((id,i)=>ord[id]=i);
+    }
+  }
+
+  // 5) 좌표 배정(rank축 t / order축 s). 더미는 좁은 슬롯.
+  const W=176, H=86;
+  const RGAP = orient==="LR"?226:150;
+  const SREAL= orient==="LR"?112:230;
+  const SDUM = orient==="LR"?26:40;
+  const sOf=(id)=> dummyRank[id]!==undefined?SDUM:SREAL;
+  let maxSpan=1;
+  for(let r=0;r<=maxRank;r++){ let s=0; rankNodes[r].forEach(id=>s+=sOf(id)); maxSpan=Math.max(maxSpan,s); }
+  const pos={}, dpos={};
+  for(let r=0;r<=maxRank;r++){
+    const arr=rankNodes[r].slice().sort((a,b)=>ord[a]-ord[b]);
+    let span=0; arr.forEach(id=>span+=sOf(id));
+    let cur=(maxSpan-span)/2;                         // 중앙 정렬
+    const t=r*RGAP+12;
+    arr.forEach(id=>{
+      const g=sOf(id), c=cur+g/2; cur+=g;
+      const isD=dummyRank[id]!==undefined;
+      if(orient==="LR"){
+        if(isD) dpos[id]={x:t+W/2, y:c};
+        else pos[id]={x:t, y:c-H/2, W, H, cx:t+W/2, cy:c};
+      } else {
+        if(isD) dpos[id]={x:c, y:t+H/2};
+        else pos[id]={x:c-W/2, y:t, W, H, cx:c, cy:t+H/2};
+      }
+    });
+  }
+
+  // 6) 간선 경로점(real=경계 접점, dummy=중심)
+  const anchor=(id,dir)=>{ const p=pos[id];
+    return orient==="LR" ? {x:p.cx+dir*W/2, y:p.cy} : {x:p.cx, y:p.cy+dir*H/2}; };
+  routes.forEach(rt=>{
+    const ch=rt.chain, pts=[];
+    for(let i=0;i<ch.length;i++){
+      const id=ch[i];
+      if(dummyRank[id]!==undefined){ pts.push({x:dpos[id].x,y:dpos[id].y}); continue; }
+      const nb = i===0?ch[1]:ch[i-1];
+      const dir = rk(nb)>rk(id) ? 1 : -1;
+      pts.push(anchor(id,dir));
+    }
+    rt.pts=pts;
+  });
+
+  // 크기
+  let width,height;
+  const rankExtent = maxRank*RGAP + 12 + (orient==="LR"?W:H) + 12;
+  if(orient==="LR"){ width=rankExtent; height=Math.max(360, maxSpan+24); }
+  else { width=Math.max(560, maxSpan+24); height=rankExtent; }
+  return { pos, dpos, routes, width, height };
+}
+
+// 경로점들을 직선(polyline)으로 잇는다. 더미 경유점에서만 꺾여 노드를 피하고
+// 그 외에는 곧은 직선. 전역(flowEdge 재사용).
+function smoothD(pts, orient){
+  if(!pts||pts.length<2) return "";
+  let d="M"+pts[0].x+","+pts[0].y;
+  for(let i=1;i<pts.length;i++) d+=" L"+pts[i].x+","+pts[i].y;
+  return d;
+}
+
+function effectiveOrient(){
+  if(ORIENT_MODE!=="auto") return ORIENT_MODE;
+  const cw = ($("graphScroll")||{}).clientWidth || 1000;
+  return cw >= 1100 ? "LR" : "TB";   // 공간 충분 → 가로(행), 부족 → 세로(열)
+}
+
+function layoutAndRender(topo){
+  LAST_TOPO = topo;
+  const orient = effectiveOrient(); CUR_ORIENT = orient;
+  const { pos, routes, width, height } = computeLayout(topo.nodes, topo.edges, orient);
+  POS = pos; GW = width; GH = height;
+  EDGE_PTS = {}; EDGES_BY_NODE = {};
+  const wrap=$("graphWrap"); wrap.style.width=width+"px"; wrap.style.height=height+"px";
+  const svg=$("edges"); svg.setAttribute("width",width); svg.setAttribute("height",height);
+  const svgF=$("edgesFlow"); svgF.setAttribute("width",width); svgF.setAttribute("height",height);
+  // 기존 노드/라벨 제거(엣지 defs 는 유지)
+  [...wrap.querySelectorAll(".gnode,.elabel")].forEach(e=>e.remove());
+  [...svg.querySelectorAll("path.edge")].forEach(e=>e.remove());
+  [...svgF.querySelectorAll("path.edge")].forEach(e=>e.remove());
+
+  // 간선(더미 경유 다점 경로) + 라벨(평소 숨김, 노드 hover 시 노출)
+  routes.forEach(rt=>{
+    const key=rt.source+"__"+rt.target;
+    EDGE_PTS[key]=rt.pts;
+    (EDGES_BY_NODE[rt.source]=EDGES_BY_NODE[rt.source]||[]).push(key);
+    (EDGES_BY_NODE[rt.target]=EDGES_BY_NODE[rt.target]||[]).push(key);
+    const path=document.createElementNS("http://www.w3.org/2000/svg","path");
+    path.setAttribute("d",smoothD(rt.pts,orient));
+    path.setAttribute("class","edge"+(rt.conditional?" cond":"")+(rt.back?" back":""));
+    path.setAttribute("marker-end","url(#arrow)");
+    path.id="edge-"+key;
+    svg.appendChild(path);
+    if(rt.label){
+      const i=Math.floor((rt.pts.length-1)/2);
+      const a=rt.pts[i], b=rt.pts[i+1]||a;
+      let mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+      // 라벨을 간선에서 '그래프 중앙 바깥쪽'(cross 방향)으로 비켜 노드 박스를 피한다.
+      // 메인 라인(중앙) 라벨은 위로, 아래 레인 라벨은 아래로 빠진다.
+      const ctr = (orient==="LR") ? GH/2 : GW/2;
+      const cur = (orient==="LR") ? my : mx;
+      const off = ((orient==="LR") ? 54 : 101) * (cur<=ctr ? -1 : 1);  // LR: 노드 H/2(43)+11 / TB: W/2(88)+13
+      if(orient==="LR") my += off; else mx += off;
+      const lab=document.createElement("div"); lab.className="elabel"; lab.id="elabel-"+key;
+      lab.style.left=mx+"px"; lab.style.top=my+"px"; lab.textContent=rt.label;
+      wrap.appendChild(lab);
+    }
+  });
+
+  // 노드(real 만; 더미는 경로점이라 그리지 않음)
+  topo.nodes.forEach(n=>{
+    const p=pos[n.id]; if(!p) return;
+    const div=document.createElement("div");
+    const term=n.kind==="terminal";
+    div.className="gnode"; div.id="gnode-"+n.id;
+    div.style.left=p.x+"px"; div.style.top=p.y+"px"; div.style.width=p.W+"px"; div.style.minHeight=p.H+"px";
+    if(term){ div.style.opacity=.6; div.style.borderStyle="dashed"; }
+    const badges=(n.sources||[]).map((s,i)=>`<span class="src ${s}">${esc((n.source_labels||[])[i]||s)}</span>`).join("");
+    div.innerHTML = `<div class="r1"><span class="ico">${esc(n.icon)}</span><span class="nm">${esc(n.label)}</span><span class="dot"></span></div>`
+      + (badges?`<div class="brief">${badges}</div>`:"")
+      + `<div class="gist" id="gist-${esc(n.id)}"></div>`;
+    div.addEventListener("mouseenter",()=>highlightNode(n.id,true));
+    div.addEventListener("mouseleave",()=>highlightNode(n.id,false));
+    if(!term) div.addEventListener("click",()=>openNode(n.id));
+    wrap.appendChild(div);
+  });
+  applyZoom();
+  if(!_autoFitDone){ _autoFitDone=true; maybeInitialFit(); }
+}
+
+// 노드 hover: 연결된 간선/라벨만 또렷하게, 나머지는 흐리게(거미줄 방지).
+function highlightNode(id, on){
+  const keys=new Set(EDGES_BY_NODE[id]||[]);
+  document.querySelectorAll("#edges path.edge").forEach(p=>{
+    const k=p.id.replace(/^edge-/,"");
+    p.classList.toggle("hi", on && keys.has(k));
+    p.classList.toggle("dim", on && !keys.has(k));
+  });
+  document.querySelectorAll(".elabel").forEach(l=>{
+    const k=l.id.replace(/^elabel-/,"");
+    l.classList.toggle("show", on && keys.has(k));
+  });
+}
+
+// 최초 1회: 그래프가 카드보다 넓을 때만(데스크탑 LR) 가로로 줄여 전체 노드를 보여준다.
+// 모바일/세로(TB) 배치는 손대지 않는다(세로 스크롤로 자연 수용).
+function maybeInitialFit(){
+  const sc=$("graphScroll"); if(!sc||!GW) return;
+  const cw=sc.clientWidth-4;
+  if(CUR_ORIENT==="LR" && GW>cw){ setZoom(Math.max(0.5, cw/GW)); }
+}
+
+// ── 줌/배치 컨트롤 ────────────────────────────────────────────────────────
+function applyZoom(){
+  const wrap=$("graphWrap"), sizer=$("graphSizer");
+  wrap.style.transform="scale("+ZOOM+")";
+  sizer.style.width=(GW*ZOOM)+"px"; sizer.style.height=(GH*ZOOM)+"px";
+  const z=$("zVal"); if(z) z.textContent=Math.round(ZOOM*100)+"%";
+}
+function setZoom(z){ ZOOM=Math.max(0.25, Math.min(2, z)); applyZoom(); }
+function fitZoom(){
+  const sc=$("graphScroll"); if(!sc||!GW||!GH) return;
+  const cw=sc.clientWidth-4, ch=Math.max(360, window.innerHeight*0.66);
+  setZoom(Math.min(cw/GW, ch/GH, 1.5));   // 폭·높이 모두 안에 들어오도록(모든 노드 가시)
+}
+function setOrientMode(m){ ORIENT_MODE=m; if(LAST_TOPO){ layoutAndRender(LAST_TOPO); redecorate(); } updateOrientTxt(); }
+function updateOrientTxt(){
+  const t=$("orientTxt"); if(!t) return;
+  t.textContent = ORIENT_MODE==="auto" ? ("자동·"+(CUR_ORIENT==="LR"?"가로":"세로")) : (ORIENT_MODE==="LR"?"가로":"세로");
+}
+
+function setNode(id,cls){ const el=$("gnode-"+id); if(el){ el.classList.remove("active","done","skipped"); el.classList.add(cls); } }
+function resetGraph(){ document.querySelectorAll(".gnode").forEach(el=>el.classList.remove("active","done","skipped"));
+  // 기본 간선 화살표 복구 + 강조/오버레이(실행 경로) 정리
+  document.querySelectorAll("#edges path.edge").forEach(p=>{ p.classList.remove("flow","hi","dim"); p.setAttribute("marker-end","url(#arrow)"); });
+  document.querySelectorAll("#edgesFlow path.edge").forEach(p=>p.remove());
+  document.querySelectorAll(".elabel.data").forEach(e=>e.remove());
+  document.querySelectorAll(".elabel.show").forEach(e=>e.classList.remove("show"));
+  document.querySelectorAll(".gist").forEach(e=>e.textContent=""); }
+
+function flowEdge(src,tgt,dataLabel){
+  let pts=EDGE_PTS[src+"__"+tgt];
+  if(!pts){
+    const s=POS[src], t=POS[tgt]; if(!s||!t) return;
+    pts=[{x:(s.cx??s.x), y:(s.cy??s.y)}, {x:(t.cx??t.x), y:(t.cy??t.y)}];
+  }
+  // 실행 경로 화살표를 '상단 오버레이 SVG'에 그려 비활성 노드에 가려지지 않게 한다.
+  const fp=document.createElementNS("http://www.w3.org/2000/svg","path");
+  fp.setAttribute("d",smoothD(pts,CUR_ORIENT));
+  fp.setAttribute("class","edge flow");
+  fp.setAttribute("marker-end","url(#arrowFlowTop)");
+  $("edgesFlow").appendChild(fp);
+  if(dataLabel){
+    const a=pts[Math.floor((pts.length-1)/2)], b=pts[Math.ceil((pts.length-1)/2)];
+    const lab=document.createElement("div"); lab.className="elabel data";
+    lab.style.left=((a.x+b.x)/2)+"px"; lab.style.top=((a.y+b.y)/2+14)+"px"; lab.textContent="📦 "+dataLabel;
+    $("graphWrap").appendChild(lab);
+  }
+}
+
+// 재배치(방향 전환) 후, 이번 실행에서 거친 경로를 다시 장식(노드 상태 + 플로우 간선)
+function redecorate(){
+  if(!EXEC_SEQ.length) return;
+  document.querySelectorAll(".gnode").forEach(el=>{
+    if(!el.style.borderStyle||el.style.borderStyle!=="dashed") el.classList.add("skipped");
+  });
+  for(let i=0;i<EXEC_SEQ.length;i++){
+    const id=EXEC_SEQ[i], isLast=(i===EXEC_SEQ.length-1);
+    setNode(id,(EXEC_DONE||!isLast)?"done":"active");
+    if(i>0){
+      const prev=EXEC_SEQ[i-1];
+      const moved = prev==="__start__" ? "사용자 요청" : ((META[prev]&&META[prev].produces||[]).join(", ")||"state");
+      flowEdge(prev, id, moved);
+    }
+  }
+}
+
+// ── 모달(노드 상세) ──────────────────────────────────────────────────────
+function openNode(id){
+  const m=META[id]; if(!m) return;
+  $("mIco").textContent=m.icon; $("mTitle").textContent=m.label;
+  const srcs=(m.sources||[]).map((s,i)=>`<span class="src ${s}">${esc((m.source_labels||[])[i]||s)}</span>`).join(" ");
+  const prod=(m.produces||[]).length?`<p style="font-size:12px;color:var(--muted)">정제·기록 필드: <code>${m.produces.map(esc).join(", ")}</code></p>`:"";
+  const det=DETAILS[id];
+  let detHtml='<p class="hint">아직 이번 세션 실행 데이터가 없습니다. 질문을 실행하면 이 노드가 참조한 입력/산출이 표시됩니다.</p>';
+  if(det){
+    const rows=(det.items||[]).map(it=>`<tr><td class="k">${esc(it.label)}</td><td class="v">${esc(it.value)}</td></tr>`).join("");
+    detHtml=`${det.headline?`<div class="hl" style="margin-bottom:6px">${esc(det.headline)}</div>`:""}<table class="io">${rows}</table>`;
+  }
+  $("mBody").innerHTML=`<div class="desc">${esc(m.desc||"")}</div><div style="margin-bottom:10px">${srcs}</div>${prod}<hr style="border:0;border-top:1px solid var(--line);margin:10px 0"><h3 style="margin:0 0 4px;font-size:13px">최근 실행 상세</h3>${detHtml}`;
+  $("modal").classList.add("open");
+}
+$("mClose").addEventListener("click",()=>$("modal").classList.remove("open"));
+$("modal").addEventListener("click",(e)=>{ if(e.target.id==="modal") $("modal").classList.remove("open"); });
+
+// ── 마크다운 (메인 app.html과 동일 엔진: marked + fixEmphasis) ────────────
+// 최소 자체 파서를 폐기하고 메인 안내서 카드와 동일하게 풀 마크다운(순서목록·인용·코드·중첩)을 렌더한다.
+if(window.marked && marked.setOptions){ try{ marked.setOptions({gfm:true, breaks:false, headerIds:false, mangle:false}); }catch(e){} }
+// CommonMark은 **굵게**가 CJK 글자 바로 앞에서 닫히면 ** 를 평문으로 남긴다 → marked가 이미 이스케이프했으므로 남은 */** 만 변환.
+function fixEmphasis(html){
+  if(html.indexOf('*')<0) return html;
+  html=html.replace(/\*\*(?!\s)([^*\n]+?)(?<!\s)\*\*/g, '<strong>$1</strong>');
+  html=html.replace(/(^|[^*])\*(?!\s)([^*\n]+?)(?<!\s)\*(?!\*)/g, '$1<em>$2</em>');
+  return html;
+}
+function md(src){ try{ return window.marked ? fixEmphasis(marked.parse(src||'')) : esc(src).replace(/\n/g,'<br>'); }catch(e){ return esc(src); } }
+
+// ── 이벤트 처리(스트림/라이브 공통) ──────────────────────────────────────
+function handleEvent(evt){
+  if(evt.type==="connected"){ setLive("연결됨 (고객 화면 입력도 수신)","on"); return; }
+  if(evt.type==="start"){
+    curRunId=evt.run_id; prevExec="__start__"; answerAcc="";
+    EXEC_SEQ=["__start__"]; EXEC_DONE=false;
+    if(evt.session_title){ const sb=$("sessBadge"); if(sb) sb.textContent="세션: "+evt.session_title; }
+    DETAILS={}; resetGraph();
+    document.querySelectorAll(".gnode").forEach(el=>{ if(!el.style.borderStyle||el.style.borderStyle!=="dashed") el.classList.add("skipped"); });
+    $("timeline").innerHTML=""; $("answer").style.display="none"; $("answerBody").innerHTML=""; $("answerBody").style.whiteSpace="";
+    setStatus(`실행 중 · "${(evt.message||"").slice(0,24)}…"`,"run");
+    return;
+  }
+  if(evt.run_id && curRunId && evt.run_id!==curRunId && evt.type!=="start") return; // 다른 실행 무시
+  if(evt.type==="node"){
+    if(prevExec){ setNode(prevExec,"done");
+      const moved = prevExec==="__start__" ? "사용자 요청" : ((META[prevExec]&&META[prevExec].produces||[]).join(", ")||"state");
+      flowEdge(prevExec, evt.node, moved);
+    }
+    setNode(evt.node,"active"); prevExec=evt.node; EXEC_SEQ.push(evt.node);
+    if(evt.detail) DETAILS[evt.node]=evt.detail;
+    const g=$("gist-"+evt.node); if(g && evt.detail) g.textContent = evt.detail.headline||"";
+    appendStep(evt);
+  } else if(evt.type==="token"){
+    // 최종 답변 토큰 실시간 누적(타자기 효과). 마크다운은 done 시 1회 적용.
+    answerAcc += evt.text || "";
+    const a=$("answer"); if(a.style.display==="none") a.style.display="";
+    const b=$("answerBody"); b.style.whiteSpace="pre-wrap"; b.textContent=answerAcc;
+  } else if(evt.type==="done"){
+    if(prevExec){ setNode(prevExec,"done"); flowEdge(prevExec,"__end__"); EXEC_SEQ.push("__end__"); }
+    // ── END 노드 녹색 처리 ────────────────────────────────────────────────
+    // __end__ 노드가 그래프에 있으면 done(녹색)으로 표시, 없으면 동적으로 생성
+    var endEl = document.getElementById("gnode-__end__");
+    if(!endEl){
+      // 토폴로지에 없을 때: 그래프 래퍼에 END 노드 시각 요소 동적 추가
+      var wrap = document.querySelector(".graph-wrap") || document.querySelector("[id*='graph']");
+      if(wrap){
+        endEl = document.createElement("div");
+        endEl.id = "gnode-__end__";
+        endEl.className = "gnode";
+        endEl.style.cssText = "right:16px; bottom:16px; min-width:72px; padding:7px 12px; text-align:center;";
+        endEl.innerHTML = '<div class="r1"><span class="ico">🏁</span><span class="nm">END</span><span class="dot"></span></div>';
+        wrap.appendChild(endEl);
+      }
+    }
+    if(endEl){ endEl.classList.remove("active","skipped"); endEl.classList.add("done"); }
+    EXEC_DONE=true;
+    const finalText = evt.final_response || answerAcc;
+    if(finalText){ $("answer").style.display=""; const b=$("answerBody"); b.style.whiteSpace=""; b.innerHTML=md(finalText); }
+    setStatus(`완료 · 총 ${evt.total_ms} ms`,"done");
+  } else if(evt.type==="error"){
+    setStatus("백엔드 오류: "+evt.message,"err");
+  }
+}
+
+function appendStep(evt){
+  const srcs=(evt.source_labels||[]).map((s,i)=>`<span class="src ${(evt.sources||[])[i]}">${esc(s)}</span>`).join(" ");
+  const det=evt.detail;
+  const io = det&&det.items&&det.items.length
+    ? `<table class="io">${det.items.map(it=>`<tr><td class="k">${esc(it.label)}</td><td class="v">${esc(it.value)}</td></tr>`).join("")}</table>` : "";
+  const hasDelta=evt.update && Object.keys(evt.update).length;
+  const delta=hasDelta?`<details class="delta"><summary>State 델타(JSON)</summary><pre class="json">${esc(JSON.stringify(evt.update,null,2))}</pre></details>`:"";
+  const div=document.createElement("div"); div.className="step";
+  div.innerHTML = `<div class="head"><span>${esc(evt.icon)}</span><span class="nm">${esc(evt.step)}. ${esc(evt.label)}</span><span class="ms">${evt.elapsed_ms} ms</span></div>`
+    + `<div style="margin-top:4px">${srcs}</div>`
+    + (det&&det.headline?`<div class="hl">${esc(det.headline)}</div>`:"")
+    + io + delta;
+  $("timeline").appendChild(div);
+  $("timeline").scrollTop = $("timeline").scrollHeight;
+}
+
+// ── 실행(대시보드 자체 입력 → /trace/run, 렌더는 /trace/live 통해 수신) ────
+async function run(question){
+  const q=(question ?? $("q").value).trim(); if(!q) return;
+  $("q").value=q;
+  try{
+    await fetch(PATHS.run,{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({message:q,session_id:(SESSION_ID||"trace-dashboard"),history:[]})});
+  }catch(e){ setStatus("실행 요청 실패: "+e.message,"err"); }
+}
+
+// ── 라이브 구독(이 세션의 실행만 수신; 고객 화면 입력 + 자체 실행 모두) ─────
+function connectLive(){
+  const url = PATHS.live + (SESSION_ID ? ("?session_id="+encodeURIComponent(SESSION_ID)) : "");
+  const es=new EventSource(url);
+  es.onmessage=(m)=>{ try{ handleEvent(JSON.parse(m.data)); }catch(_){} };
+  es.onerror=()=>{ setLive("재연결 중…"); };
+}
+
+// ── 초기화 ──────────────────────────────────────────────────────────────
+$("chips").innerHTML=SAMPLES.map(s=>`<span class="chip">${esc(s)}</span>`).join("");
+$("chips").querySelectorAll(".chip").forEach(c=>c.addEventListener("click",()=>run(c.textContent)));
+$("run").addEventListener("click",()=>run());
+$("q").addEventListener("keydown",(e)=>{ if(e.key==="Enter") run(); });
+
+// 그래프 툴바(가로/세로 배치 전환 + 줌)
+$("orientBtn").addEventListener("click",()=>{
+  const next = ORIENT_MODE==="auto" ? "TB" : (ORIENT_MODE==="TB" ? "LR" : "auto");
+  setOrientMode(next);
+});
+$("zOut").addEventListener("click",()=>setZoom(ZOOM-0.1));
+$("zIn").addEventListener("click",()=>setZoom(ZOOM+0.1));
+$("zFit").addEventListener("click",fitZoom);
+$("zReset").addEventListener("click",()=>setZoom(1));
+// 자동 모드일 때 창 크기 변화로 방향이 바뀌면 재배치
+let _rz; window.addEventListener("resize",()=>{ clearTimeout(_rz); _rz=setTimeout(()=>{
+  if(ORIENT_MODE==="auto" && LAST_TOPO){ const want=effectiveOrient();
+    if(want!==CUR_ORIENT){ layoutAndRender(LAST_TOPO); redecorate(); updateOrientTxt(); } }
+},250); });
+
+loadTopology().then(()=>{
+  updateOrientTxt();
+  connectLive();
+  const seed=new URLSearchParams(location.search).get("seed");
+  if(seed){ $("q").value=seed; setTimeout(()=>run(seed),400); }
+});
+</script>
+</body>
+</html>

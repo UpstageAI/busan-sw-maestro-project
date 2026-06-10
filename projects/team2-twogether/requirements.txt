@@ -1,0 +1,17 @@
+# 멘토 추천 백엔드 의존성.
+# 워크플로우 오케스트레이션 (Phase 2 · 1단계)
+langgraph==1.2.4
+
+# API 서버 (Phase 2 · 2단계)
+fastapi==0.136.3
+uvicorn==0.49.0
+
+# 스키마 / 노드 데이터 모델 (request/response/gap)
+pydantic==2.13.4
+
+# 테스트 (httpx 는 fastapi TestClient 가 사용)
+pytest>=9.0
+httpx==0.28.1
+
+# NOTE: 벡터 검색(qdrant-client, Upstage)은 MENTOR_RETRIEVAL_MODE=vector/hybrid
+#       사용 시에만 필요하며 기본 bm25 경로에서는 불필요.
