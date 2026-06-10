@@ -1,5 +1,6 @@
 import type {
   CaseRecord,
+  CharacterReactionDiagnostic,
   CaseSummary,
   CluePath,
   CurrentObjective,
@@ -7,6 +8,7 @@ import type {
   DialogueRuntimeDiagnostics,
   Evidence,
   GameEventFeedItem,
+  HelperSuggestion,
   GameSessionView,
   NoteEntry,
   Opening,
@@ -24,7 +26,7 @@ import type {
   VisualState,
   PublicContradictionReadModel,
 } from "../types";
-import { defaultBackgroundIdForCase, normalizeExpression } from "../constants/presentation";
+import { defaultBackgroundIdForCase, normalizeExpression, QUESTION_LIMIT } from "../constants/presentation";
 import { sanitizePublicDiagnosticValue, sanitizePublicIds, sanitizeSourceRefs } from "../utils/publicDiagnostics";
 
 const emptyOpening: Opening = {
@@ -50,6 +52,7 @@ export type BackendCase = {
   incidentTime: string;
   incidentLocation: string;
   questionLimit: number;
+  enabled?: boolean;
 };
 
 export type BackendSession = {
@@ -69,6 +72,7 @@ export type BackendSession = {
     motiveCandidate?: boolean;
     pressure?: number;
     pressureState?: string;
+    pressureStage?: string;
     tensionLevel?: string;
     emotionalState?: string;
     emotion?: string;
@@ -168,7 +172,14 @@ export type BackendSession = {
     emotionalState?: string;
     tensionLevel?: string;
     lastEventId?: string;
+    characterReaction?: CharacterReactionDiagnostic;
+    characterReactionRoute?: string;
+    helperSuggestion?: HelperSuggestion;
+    runtimeDiagnostics?: Record<string, unknown>;
   };
+  helperSuggestion?: HelperSuggestion;
+  pressureGates?: GameSessionView["pressureGates"];
+  disclosureLadders?: GameSessionView["disclosureLadders"];
   lastEventId?: string;
   opening?: Opening;
   storyline?: Partial<Storyline> & {
@@ -187,6 +198,14 @@ export type BackendSession = {
   accusationResult?: {
     verdict: Verdict;
     message: string;
+    missingEvidenceIds?: string[];
+    missingContradictionIds?: string[];
+    missingStatementIds?: string[];
+  };
+  accusation?: {
+    verdict?: Verdict;
+    correct?: boolean;
+    message?: string;
     missingEvidenceIds?: string[];
     missingContradictionIds?: string[];
     missingStatementIds?: string[];
@@ -232,6 +251,7 @@ export function normalizeCase(item: BackendCase | CaseSummary): CaseSummary {
       incidentTime: item.incidentTime,
       location: item.incidentLocation,
       questionLimit: item.questionLimit,
+      enabled: item.enabled ?? true,
     };
   }
   return item;
@@ -253,6 +273,71 @@ function formatSafety(value?: string | { status?: string; decision?: string; blo
 function countEvents(value?: unknown[], explicit?: number): number | undefined {
   if (typeof explicit === "number") return explicit;
   return value?.length;
+}
+
+const reactionLabels: Record<string, string> = {
+  answer_relevant: "관련 질문",
+  deflect_irrelevant: "관련 없는 발화",
+  reject_false_premise: "근거 없는 단정",
+  challenge_player_contradiction: "플레이어 발화 모순",
+  react_to_valid_pressure: "유효한 압박",
+  ask_clarification: "모호한 질문",
+  refuse_meta_or_private: "메타/비공개 요청",
+};
+
+const reactionEffects: Record<string, string> = {
+  answer_relevant: "공개 사실 답변",
+  deflect_irrelevant: "캐릭터식 회피",
+  reject_false_premise: "전제 반박",
+  challenge_player_contradiction: "공개 정보 기준 지적",
+  react_to_valid_pressure: "긴장 반응",
+  ask_clarification: "구체화 요청",
+  refuse_meta_or_private: "세계관 안에서 거절",
+};
+
+function normalizeCharacterReaction(value?: CharacterReactionDiagnostic): CharacterReactionDiagnostic | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const route = sanitizePublicDiagnosticValue(value.reactionRoute ?? value.route);
+  if (!route) return undefined;
+  return {
+    owner: sanitizePublicDiagnosticValue(value.owner),
+    suspectId: sanitizePublicDiagnosticValue(value.suspectId),
+    route,
+    reactionRoute: route,
+    label: sanitizePublicDiagnosticValue(value.label) ?? reactionLabels[route],
+    effect: sanitizePublicDiagnosticValue(value.effect) ?? reactionEffects[route],
+    confidence: typeof value.confidence === "number" ? value.confidence : undefined,
+    playerClaimAssessment: sanitizePublicDiagnosticValue(value.playerClaimAssessment),
+    characterStance: sanitizePublicDiagnosticValue(value.characterStance),
+    responseIntent: sanitizePublicDiagnosticValue(value.responseIntent),
+    playerFacingReason: sanitizePublicDiagnosticValue(value.playerFacingReason),
+    publicOnly: value.publicOnly !== false,
+    appliedStateChange: value.appliedStateChange === true,
+  };
+}
+
+function normalizeHelperSuggestion(value?: HelperSuggestion): HelperSuggestion | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const helperRoute = sanitizePublicDiagnosticValue(value.helperRoute) ?? "silent";
+  return {
+    helperRoute,
+    confidence: typeof value.confidence === "number" ? value.confidence : 0,
+    tone: sanitizePublicDiagnosticValue(value.tone) ?? "noir_assistant",
+    message: sanitizePublicDiagnosticValue(value.message) ?? "",
+    suggestedActions: Array.isArray(value.suggestedActions)
+      ? value.suggestedActions.map((action) => ({
+          type: sanitizePublicDiagnosticValue(action.type) ?? "open_evidence",
+          targetId: sanitizePublicDiagnosticValue(action.targetId) ?? "",
+          label: sanitizePublicDiagnosticValue(action.label) ?? "확인",
+        })).filter((action) => action.targetId || action.label)
+      : [],
+    publicRefs: {
+      evidenceIds: sanitizePublicIds(value.publicRefs?.evidenceIds),
+      statementIds: sanitizePublicIds(value.publicRefs?.statementIds),
+      relationIds: sanitizePublicIds(value.publicRefs?.relationIds),
+      suspectIds: sanitizePublicIds(value.publicRefs?.suspectIds),
+    },
+  };
 }
 
 function cleanDialogueText(text: string, speaker: string): string {
@@ -281,6 +366,8 @@ function cleanDialogueText(text: string, speaker: string): string {
 
 function runtimeDiagnostics(session: BackendSession, source: "api"): DialogueRuntimeDiagnostics {
   const result = session.dialogueResult;
+  const characterReaction = normalizeCharacterReaction(result?.characterReaction);
+  const helperSuggestion = normalizeHelperSuggestion(result?.helperSuggestion ?? session.helperSuggestion);
   return {
     source,
     dialogueMode: sanitizePublicDiagnosticValue(result?.dialogueMode),
@@ -304,6 +391,9 @@ function runtimeDiagnostics(session: BackendSession, source: "api"): DialogueRun
     remainingQuestionsDelta: result?.remainingQuestionsDelta,
     emotionalState: sanitizePublicDiagnosticValue(result?.emotionalState),
     tensionLevel: sanitizePublicDiagnosticValue(result?.tensionLevel),
+    characterReaction,
+    characterReactionRoute: sanitizePublicDiagnosticValue(result?.characterReactionRoute ?? characterReaction?.reactionRoute ?? characterReaction?.route),
+    helperSuggestion,
   };
 }
 
@@ -442,6 +532,7 @@ function enrichSessionView(session: GameSessionView): GameSessionView {
       pressure: suspect.pressure,
       status: suspect.status,
       pressureState: suspect.pressureState,
+      pressureStage: suspect.pressureStage,
       tensionLevel: suspect.tensionLevel,
       emotion: suspect.emotion,
       expression: suspect.expression,
@@ -483,6 +574,7 @@ export function normalizeSession(payload: BackendSession | GameSessionView): Gam
       pressure,
       status: statusFromPublicState(pressure, item.pressureState, tensionLevel),
       pressureState: item.pressureState,
+      pressureStage: sanitizePublicDiagnosticValue(item.pressureStage),
       tensionLevel,
       emotion: emotionalState,
       expression,
@@ -561,18 +653,33 @@ export function normalizeSession(payload: BackendSession | GameSessionView): Gam
       used: session.dialogueLog?.some((log) => log.questionId === item.questionId && log.speaker === "player") ?? false,
     })),
   ];
-  const dialogueLog: DialogueLogItem[] = (session.dialogueLog ?? []).map((item) => ({
-    id: item.id,
-    speaker: item.speaker,
-    text: cleanDialogueText(item.text, item.speaker),
-    suspectId: item.suspectId ?? (item.questionId ? questionSuspectById.get(item.questionId) : undefined),
-    questionId: item.questionId,
-    tag: item.speaker === "player" ? "질문" : item.speaker === "rule_engine" ? "룰 판정" : "답변",
-    createdAt: item.createdAt,
-    important: item.speaker !== "player",
-  }));
+  const latestNpcId = [...(session.dialogueLog ?? [])].reverse().find((item) => item.speaker !== "player" && item.speaker !== "rule_engine" && item.speaker !== "system")?.id;
+  const latestVoiceTone = (session.dialogueResult?.runtimeDiagnostics as Record<string, unknown> | undefined)?.voiceMetadata as Record<string, unknown> | undefined;
+  const dialogueLog: DialogueLogItem[] = (session.dialogueLog ?? [])
+    .filter((item) => item.speaker !== "rule_engine" && item.speaker !== "system")
+    .map((item) => ({
+      id: item.id,
+      speaker: item.speaker,
+      text: cleanDialogueText(item.text, item.speaker),
+      suspectId: item.suspectId ?? (item.questionId ? questionSuspectById.get(item.questionId) : undefined),
+      questionId: item.questionId,
+      tag: item.speaker === "player" ? "질문" : "답변",
+      createdAt: item.createdAt,
+      important: item.speaker !== "player",
+      voiceTag: item.id === latestNpcId && latestVoiceTone?.tone ? String(latestVoiceTone.tone) : undefined,
+    }));
   const contradictionResult = session.contradictionResult;
-  const accusationResult = session.accusationResult;
+  const accusationResult = session.accusationResult ?? (
+    session.accusation?.verdict || typeof session.accusation?.correct === "boolean" || session.accusation?.message
+      ? {
+          verdict: session.accusation.verdict ?? (session.accusation.correct ? "correct" : "wrong"),
+          message: session.accusation.message ?? (session.accusation.correct ? "사건이 해결되었습니다." : "잘못된 범인을 지목했습니다."),
+          missingEvidenceIds: session.accusation.missingEvidenceIds,
+          missingContradictionIds: session.accusation.missingContradictionIds,
+          missingStatementIds: session.accusation.missingStatementIds,
+        }
+      : undefined
+  );
   const foundContradictionIds = session.discoveredContradictionIds ?? session.foundContradictionIds ?? [];
   const storyline = normalizeStoryline(session.storyline);
   const currentActId = session.currentActId ?? storyline.acts[0]?.actId ?? "intro";
@@ -595,7 +702,7 @@ export function normalizeSession(payload: BackendSession | GameSessionView): Gam
     caseId: session.caseId,
     phase: accusationResult ? "result" : normalizePhase(session.phase),
     remainingQuestions: session.remainingQuestions,
-    questionLimit: session.questionLimit ?? 12,
+    questionLimit: session.questionLimit ?? QUESTION_LIMIT,
     visibleEvidenceCount: session.visibleEvidenceCount ?? evidence.filter((item) => item.unlocked).length,
     totalEvidenceCount: session.totalEvidenceCount ?? evidence.length,
     selectedSuspectId,
@@ -622,6 +729,9 @@ export function normalizeSession(payload: BackendSession | GameSessionView): Gam
     visualState,
     latestEvents: (session.dialogueResult?.appliedEvents ?? []).map(eventFeedItem).filter((item): item is GameEventFeedItem => Boolean(item)),
     runtimeDiagnostics: runtimeDiagnostics(session, "api"),
+    helperSuggestion: normalizeHelperSuggestion(session.helperSuggestion ?? session.dialogueResult?.helperSuggestion),
+    pressureGates: session.pressureGates,
+    disclosureLadders: session.disclosureLadders,
     lastVerdict: contradictionResult
       ? {
           verdict: contradictionResult.verdict,

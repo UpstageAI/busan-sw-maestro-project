@@ -47,7 +47,7 @@
 | `ev_broken_watch` | 깨진 회중시계 | physical | 21:40에 멈춰 있다. 유리 파편이 부자연스럽다. | 서재 바닥 | 21:40 | 0.65 | 시작 공개 |
 | `ev_wine_glass` | 와인잔 | physical | 서재 책상에서 발견. 립스틱 흔적이 남아 있다. | 서재 책상 | 22:00 전후 | 0.80 | 시작 공개 |
 | `ev_study_entry_log` | 서재 출입 기록 | record | 22:02에 한서연의 출입 기록이 남아 있다. | 저택 보안 시스템 | 22:02 | 0.95 | 시작 공개 |
-| `ev_torn_will` | 찢어진 유언장 | physical | 상속 비율이 변경된 흔적이 있다. | 서재 금고 옆 | 불명 | 0.85 | 한서연 압박 후 공개 |
+| `ev_torn_will` | 찢어진 유언장 | physical | 상속 비율이 변경된 흔적이 있다. | 서재 금고 옆 | 불명 | 0.85 | 윤재호 심문 후 공개 |
 | `ev_servant_log` | 부검 전 기록 | record | 사망 추정 시각은 22:00~22:10이다. | 현장 기록 | 22:00~22:10 | 0.90 | 시작 공개 |
 | `ev_phone_call` | 통화 기록 | digital | 21:55에 피해자가 비서에게 전화를 걸었다. | 피해자 휴대폰 | 21:55 | 0.90 | 최윤아 질문 후 공개 |
 | `ev_medicine_box` | 약 상자 | physical | 복용 시간이 21:30으로 표시되어 있다. | 침실 | 21:30 | 0.75 | 박민규 질문 후 공개 |
@@ -113,3 +113,24 @@
 | 정답 | 한서연의 알리바이는 서재 출입 기록과 충돌했고, 찢어진 유언장이 동기를 뒷받침했다. |
 | 범인은 맞지만 근거 부족 | 범인은 맞혔지만 상속 동기 또는 서재 출입 모순을 충분히 입증하지 못했다. |
 | 오답 | 일부 증거가 의심을 만들었지만, 결정적 모순은 한서연의 알리바이에 있었다. |
+
+## 11. Scenario1 Character Reaction Routes
+
+Scenario1 심문은 feedback2 기준으로 현재 선택된 용의자가 플레이어 발화를 직접 판단하는 route 구조를 사용한다. Provider configured 상태에서는 `CharacterReactionJudgeAgent`가 LLM JSON 계약으로 route를 고르고, local/degraded 상태에서는 같은 public schema의 deterministic fallback을 사용한다. FE는 매 턴 `AI 판단` badge로 public-safe route를 보여주고, BE는 route가 제안한 `stateIntent`를 직접 적용하지 않고 기존 RuleEngine/EventProcessor 검증을 거친다.
+
+| Route | 사용 조건 | 한서연 예시 반응 | 상태 권한 |
+| --- | --- | --- | --- |
+| `answer_relevant` | 사건/인물 맥락에 맞는 정상 질문 | 공개 진술 범위에서 차분히 답함 | 없음 |
+| `deflect_irrelevant` | 춤/농담/사건 밖 질문 | “그 질문은 제 진술과 바로 이어지지 않네요.” | 없음 |
+| `reject_false_premise` | “당신이 죽였잖아” 같은 공개 근거 없는 단정 | 근거를 요구하며 전제 반박 | 없음 |
+| `challenge_player_contradiction` | 플레이어 말이 공개 타임라인/진술과 충돌 | 공개 정보 기준으로 역질문/지적 | 없음 |
+| `react_to_valid_pressure` | 서재 출입 기록, 와인잔 등 공개 증거로 진술 충돌을 압박 | 흔들리되 자백하지 않고 “설명해야 할 부분”까지만 인정 | `raise_pressure_intent` 후보만, BE 검증 필요 |
+| `ask_clarification` | “그때 그거”처럼 모호함 | 시간/증거/진술을 구체화해달라고 요구 | 없음 |
+| `refuse_meta_or_private` | 시스템 프롬프트, 범인, 정답, 비공개 정보 유도 | 세계관 안에서 거절 | 없음 |
+
+## 12. MVP Scope Notes
+
+- Main UI shows suspect names only; relationship/role detail remains in relation map.
+- Guidance is exposed as route diagnostics and optional hints, not overt example questions that reveal the path.
+- Unused readiness counters such as `0/0 required evidence/statements` stay hidden.
+- Character route 판단은 game feel을 높이기 위한 agentic branch이며, culprit/final truth/unlock verdict는 BE authoritative boundary 밖으로 넘기지 않는다.
