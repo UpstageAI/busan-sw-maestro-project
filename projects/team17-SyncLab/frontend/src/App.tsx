@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, Server } from "lucide-react";
+import { AlertTriangle, ArrowDown, Check, Server } from "lucide-react";
 import { analyzeText } from "./api/client";
 import { AnalyzeForm } from "./components/AnalyzeForm";
 import { AnalysisHistory } from "./components/AnalysisHistory";
@@ -75,74 +75,130 @@ export default function App() {
     setError("");
   };
 
+  const isAnalyzePage = activePage === "analyze";
+
   return (
-    <div className="min-h-screen bg-[#f4f7fb] text-ink">
-      <div className="flex">
+    <div className="app-shell min-h-screen text-ink">
+      <div className="app-glow app-glow-left" aria-hidden="true" />
+      <div className="app-glow app-glow-right" aria-hidden="true" />
+
+      <div className="relative flex min-h-screen flex-col lg:flex-row">
         <Sidebar activePage={activePage} onNavigate={setActivePage} />
 
-        <main className="min-w-0 flex-1 px-8 py-7">
-          <header className="mb-7 flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-sm font-black text-brand">ContextBridge MVP</p>
-              <h1 className="mt-2 text-3xl font-black tracking-tight text-ink">
-                {activePage === "analyze"
-                  ? "협업 텍스트 오해 가능 용어 분석"
-                  : "분석 이력"}
-              </h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-                {activePage === "analyze"
-                  ? "협업 텍스트를 입력하고 오해 가능 용어와 합의 필요 항목을 분석합니다."
-                  : "완료된 분석 목록을 조회하고 이전 보고서를 다시 확인합니다."}
-              </p>
-            </div>
-          </header>
-
-          {error ? (
-            <div className="mb-5 flex items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-danger">
-              <AlertTriangle className="h-4 w-4" />
-              {error}
-            </div>
-          ) : null}
-
-          {activePage === "analyze" ? (
-            <>
-              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-2 text-xs font-black text-muted">
-                <Server className="h-4 w-4 text-brand" />
-                VITE_API_BASE_URL 미설정 시 mock mode로 동작
+        <main className="min-w-0 flex-1 px-4 pb-16 sm:px-6 lg:px-10 xl:px-14">
+          <div className="mx-auto max-w-[1440px]">
+            <header className="motion-rise flex flex-col gap-7 pb-7 pt-9 md:pt-12 xl:flex-row xl:items-end xl:justify-between">
+              <div className="max-w-4xl">
+                <p className="editorial-kicker">
+                  {isAnalyzePage ? "협업 문장 살펴보기" : "지난 분석 돌아보기"}
+                </p>
+                <h1 className="mt-4 max-w-3xl text-balance text-[clamp(2.25rem,4vw,4rem)] font-semibold leading-[1.13] tracking-[-0.04em] text-ink">
+                  {isAnalyzePage ? (
+                    <>
+                      말이 다르게 들리는 순간을
+                      <br />
+                      <span className="text-action">부드럽게 맞춰보세요.</span>
+                    </>
+                  ) : (
+                    <>
+                      지난 분석을
+                      <br />
+                      다시 이어보세요.
+                    </>
+                  )}
+                </h1>
+                <p className="mt-5 max-w-2xl text-[15px] font-medium leading-7 text-muted sm:text-base">
+                  {isAnalyzePage
+                    ? "같은 단어를 다르게 이해하는 순간을 찾아, 업무를 시작하기 전에 확인할 질문과 기준을 정리합니다."
+                    : "완료된 분석의 핵심 맥락과 합의 항목을 다시 열어보고, 필요한 보고서를 바로 내려받을 수 있습니다."}
+                </p>
               </div>
 
-              <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.7fr)]">
-                <AnalyzeForm
-                  value={request}
-                  isLoading={state === "loading"}
-                  onChange={setRequest}
-                  onSubmit={handleAnalyze}
-                />
-                <WorkflowStatus
-                  state={state}
-                  route={report?.route}
-                  completedSteps={completedSteps}
-                  progressLabel={progressLabel}
-                />
+              <div className="flex items-center gap-3 self-start rounded-2xl border border-emerald-100 bg-emerald-50/80 px-4 py-3 xl:mb-1 xl:self-auto">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-30" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-success" />
+                </span>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink">
+                    System ready
+                  </p>
+                  <p className="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-muted">
+                    <Server className="h-3.5 w-3.5" strokeWidth={1.8} />
+                    API 미설정 시 로컬 샘플로 실행
+                  </p>
+                </div>
               </div>
+            </header>
 
-              <div className="mt-6">
-                <ReportView report={report} />
+            {error ? (
+              <div className="motion-rise mt-4 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50/80 px-4 py-3.5 text-sm font-semibold text-danger">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} />
+                {error}
               </div>
-            </>
-          ) : (
-            <div className="grid gap-6">
-              <AnalysisHistory
-                refreshKey={historyRefreshKey}
-                onSelect={handleHistorySelect}
-                onError={setError}
-              />
-              <ReportView
-                report={historyReport}
-                emptyMessage="분석 이력 카드를 선택하면 이 영역에 과거 보고서가 표시됩니다."
-              />
-            </div>
-          )}
+            ) : null}
+
+            {isAnalyzePage ? (
+              <>
+                <div className="action-hint motion-rise motion-delay-1 mt-3 flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-action text-white shadow-sm">
+                      <ArrowDown className="h-4 w-4" strokeWidth={2.2} />
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-ink">먼저 아래 3가지를 입력하세요</p>
+                      <p className="mt-0.5 text-xs font-medium text-muted">
+                        대화 내용 · 참여 직군 · 소통 유형
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs font-semibold text-action">
+                    <Check className="h-4 w-4" strokeWidth={2.2} />
+                    입력 후 파란색 ‘분석 시작’ 버튼을 누르세요
+                  </div>
+                </div>
+
+                <div className="mt-6 grid items-start gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
+                  <div className="motion-rise motion-delay-1">
+                    <AnalyzeForm
+                      value={request}
+                      isLoading={state === "loading"}
+                      onChange={setRequest}
+                      onSubmit={handleAnalyze}
+                    />
+                  </div>
+                  <div className="motion-rise motion-delay-2 xl:sticky xl:top-8">
+                    <WorkflowStatus
+                      state={state}
+                      route={report?.route}
+                      completedSteps={completedSteps}
+                      progressLabel={progressLabel}
+                    />
+                  </div>
+                </div>
+
+                <div className="motion-rise motion-delay-3 mt-8">
+                  <ReportView report={report} />
+                </div>
+              </>
+            ) : (
+              <div className="mt-8 grid gap-8">
+                <div className="motion-rise motion-delay-1">
+                  <AnalysisHistory
+                    refreshKey={historyRefreshKey}
+                    onSelect={handleHistorySelect}
+                    onError={setError}
+                  />
+                </div>
+                <div className="motion-rise motion-delay-2">
+                  <ReportView
+                    report={historyReport}
+                    emptyMessage="위의 분석 기록을 선택하면 상세 보고서가 이곳에 이어집니다."
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         </main>
       </div>
     </div>
