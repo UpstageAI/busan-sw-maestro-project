@@ -31,12 +31,26 @@ def _config(session_id: str) -> dict:
 
 
 def _to_response(session_id: str, result: dict) -> RunResponse:
-    """그래프 invoke 결과를 응답으로 변환. interrupt 면 승인 대기, 아니면 완료."""
+    """그래프 invoke 결과를 응답으로 변환.
+
+    interrupt 면 payload 의 reason 으로 1차(승인)/2차(선호 확인)를 구분한다. 순차 HITL
+    이라 동시에 둘이 뜨지 않으므로 [0] 단일 interrupt 전제가 유효하다.
+    """
     interrupts = result.get("__interrupt__")
     if interrupts:
-        # 이 그래프의 interrupt 는 request_approval 노드 1개뿐이라 항상 단일이다.
-        # (향후 병렬 분기로 interrupt 가 여럿 생기면 id 별 매핑이 필요 - 현재는 [0] 전제.)
         payload = interrupts[0].value
+        if payload.get("reason") == "awaiting_preference":
+            response = RunResponse(
+                session_id=session_id,
+                status=RunStatus.awaiting_preference,
+                candidates=payload.get("candidates", []),
+            )
+            logger.info(
+                "Graph response awaiting_preference: session=%s candidates=%d",
+                session_id,
+                len(response.candidates),
+            )
+            return response
         response = RunResponse(
             session_id=session_id,
             status=RunStatus.awaiting_approval,
@@ -56,6 +70,7 @@ def _to_response(session_id: str, result: dict) -> RunResponse:
         results=result.get("results", []),
         summary=result.get("summary", {}),
         final_output=result.get("final_output"),
+        confirmed_output=result.get("confirmed_output"),
     )
     logger.info(
         "Graph response completed: session=%s results=%d summary=%s",
@@ -95,26 +110,44 @@ def run(req: RunRequest) -> RunResponse:
 
 @router.post("/resume", response_model=RunResponse)
 def resume(req: ResumeRequest) -> RunResponse:
-    """사용자 결정으로 그래프 재개. approve 만 저장된다.
+    """사용자 결정으로 그래프 재개 (1차 승인 또는 2차 선호 확인).
 
-    전제: 해당 session_id 가 승인 interrupt 로 정지된 상태여야 한다. 정지 상태가
-    아닌(또는 존재하지 않는) session_id 로 호출하거나 동일 session 을 중복 resume
-    하면 동작이 보장되지 않는다(데모는 1회 resume happy path 전제). 운영 시 대기
-    세션 존재 검증 후 없으면 4xx 반환을 추가한다.
+    preference_choices 가 오면 2차(선호 확인) interrupt 재개로, 아니면 1차(승인)
+    재개로 분기한다. 그래프는 현재 정지점(1차/2차)에 resume 값을 주입한다.
+
+    전제: 해당 session_id 가 그 단계 interrupt 로 정지된 상태여야 한다. 정지 상태가
+    아닌(또는 존재하지 않는) session_id 로 호출하거나 같은 정지점을 중복 resume 하면
+    동작이 보장되지 않는다(데모는 happy path 전제). 운영 시 대기 세션 존재 검증
+    (graph.get_state) 후 없으면 4xx 반환을 추가한다.
     """
-    action_counts: dict[str, int] = {}
-    for decision in req.decisions:
-        action_counts[decision.action.value] = action_counts.get(decision.action.value, 0) + 1
-    logger.info(
-        "POST /resume start: session=%s decisions=%d actions=%s",
-        req.session_id,
-        len(req.decisions),
-        action_counts,
-    )
+    # 둘 다 비면 빈 결정으로 그래프가 조용히 완료되어 사용자 입력이 무시된다.
+    if req.preference_choices is None and not req.decisions:
+        raise HTTPException(
+            status_code=400,
+            detail="decisions 또는 preference_choices 중 하나는 필요합니다.",
+        )
+    if req.preference_choices is not None:
+        resume_value = [c.model_dump(mode="json") for c in req.preference_choices]
+        logger.info(
+            "POST /resume start (preference): session=%s choices=%d",
+            req.session_id,
+            len(req.preference_choices),
+        )
+    else:
+        action_counts: dict[str, int] = {}
+        for decision in req.decisions:
+            action_counts[decision.action.value] = action_counts.get(decision.action.value, 0) + 1
+        resume_value = [d.model_dump(mode="json") for d in req.decisions]
+        logger.info(
+            "POST /resume start: session=%s decisions=%d actions=%s",
+            req.session_id,
+            len(req.decisions),
+            action_counts,
+        )
     graph = build_graph()
     try:
         result = graph.invoke(
-            Command(resume=[d.model_dump(mode="json") for d in req.decisions]),
+            Command(resume=resume_value),
             _config(req.session_id),
         )
     except Exception:

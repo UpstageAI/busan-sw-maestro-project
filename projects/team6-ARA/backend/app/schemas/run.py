@@ -10,11 +10,13 @@ from pydantic import BaseModel, Field
 
 from app.schemas.approval import ApprovalDecision, ExecutionResult
 from app.schemas.items import Item
+from app.schemas.preference import PreferenceCandidate, PreferenceChoice
 from app.schemas.routing import ReviewableItem
 
 
 class RunStatus(str, Enum):
-    awaiting_approval = "awaiting_approval"  # interrupt - 사용자 결정 대기
+    awaiting_approval = "awaiting_approval"  # 1차 interrupt - 승인 결정 대기
+    awaiting_preference = "awaiting_preference"  # 2차 interrupt - 선호 확인 대기
     completed = "completed"  # 그래프 종료
 
 
@@ -27,17 +29,24 @@ class RunRequest(BaseModel):
 
 
 class ResumeRequest(BaseModel):
-    """POST /resume 요청. 승인 interrupt 에 대한 사용자 결정."""
+    """POST /resume 요청. 1차(승인) 또는 2차(선호 확인) interrupt 재개 입력.
+
+    - 1차(awaiting_approval): decisions 를 채운다.
+    - 2차(awaiting_preference): preference_choices 를 채운다.
+    채워진 쪽으로 run.py 가 Command(resume=...) 를 분기한다.
+    """
 
     session_id: str
-    decisions: list[ApprovalDecision]
+    decisions: list[ApprovalDecision] = Field(default_factory=list)
+    preference_choices: list[PreferenceChoice] | None = None
 
 
 class RunResponse(BaseModel):
     """/run, /resume 공통 응답.
 
-    - status=awaiting_approval: reviewables/skipped 를 보고 사용자가 결정 -> /resume
-    - status=completed: results/summary/final_output 가 채워짐
+    - status=awaiting_approval: reviewables/skipped 를 보고 사용자가 결정 -> /resume(decisions)
+    - status=awaiting_preference: candidates 를 보고 사용자가 선택 -> /resume(preference_choices)
+    - status=completed: results/summary/final_output(+confirmed_output) 가 채워짐
     """
 
     session_id: str
@@ -45,7 +54,10 @@ class RunResponse(BaseModel):
     # awaiting_approval 일 때
     reviewables: list[ReviewableItem] = Field(default_factory=list)
     skipped: list[Item] = Field(default_factory=list)
+    # awaiting_preference 일 때
+    candidates: list[PreferenceCandidate] = Field(default_factory=list)
     # completed 일 때
     results: list[ExecutionResult] = Field(default_factory=list)
     summary: dict = Field(default_factory=dict)
     final_output: dict | None = None
+    confirmed_output: dict | None = None  # 6-3 선호 저장 결과

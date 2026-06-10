@@ -88,6 +88,7 @@ def finalize_item(item: LLMItem) -> Item:
         priority=item.priority,
         content=item.source_sentence if item.type == "memo" and not needs_confirmation else None,
         description=item.title if item.type == "risk" and not needs_confirmation else None,
+        mitigation=item.mitigation if item.type == "risk" and not needs_confirmation else None,
         confidence=round(confidence, 2),
         needs_confirmation=needs_confirmation,
         recommended_tool=recommended_tool,

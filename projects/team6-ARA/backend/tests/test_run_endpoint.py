@@ -76,7 +76,8 @@ def test_resume_exclude_does_not_store(client):
 
 def test_resume_modify_recheck_and_no_store(client):
     _run_one(client, "s-modify", {"type": "task", "title": "원본", "assignee": "A"})
-    out = client.post(
+    # 1차 resume(modify) -> 수정 쌍이 6-3 선호 후보가 되어 2차 interrupt 로 정지.
+    out1 = client.post(
         "/resume",
         json={
             "session_id": "s-modify",
@@ -94,12 +95,27 @@ def test_resume_modify_recheck_and_no_store(client):
             ],
         },
     ).json()
-    res = out["results"][0]
+    assert out1["status"] == "awaiting_preference"
+    assert len(out1["candidates"]) >= 1  # title 변경이 선호 후보로
+    assert client.get("/storage/tasks").json()["count"] == 0  # modify 는 저장 안 됨
+
+    # 2차 resume(선호 무시) -> completed. modify 결과는 needs_recheck 로 남는다.
+    out2 = client.post(
+        "/resume",
+        json={
+            "session_id": "s-modify",
+            "preference_choices": [{"field": "title", "action": "dismiss"}],
+        },
+    ).json()
+    assert out2["status"] == "completed"
+    res = out2["results"][0]
     assert res["status"] == "needs_recheck"
     assert res["recheck_required"] is True
-    assert client.get("/storage/tasks").json()["count"] == 0  # 저장 안 됨
+    assert client.get("/storage/tasks").json()["count"] == 0  # 여전히 저장 안 됨
     # 6-3 seam: 수정 쌍이 final_output.needs_recheck 에 잡힌다
-    assert len(out["final_output"]["needs_recheck"]) == 1
+    assert len(out2["final_output"]["needs_recheck"]) == 1
+    # 선호 무시 -> 저장 안 됨
+    assert out2["confirmed_output"]["saved"] is False
 
 
 def test_resume_missing_required_falls_back_to_pending(client):

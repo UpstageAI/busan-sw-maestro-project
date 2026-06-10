@@ -6,10 +6,12 @@
 from datetime import date
 
 from app.analysis.completeness import finalize_item
-from app.analysis.pipeline import analyze
+from app.analysis.pipeline import _postprocess, analyze, load_context
+from app.feedback.db import save_user_preference
 from app.llm.fake import FakeLLM
 from app.llm.solar import _extract_json
-from app.schemas.analysis import ContextBundle, LLMItem, LLMOutput
+from app.schemas.analysis import AnalyzeResult, ContextBundle, Item, LLMItem, LLMOutput
+from app.schemas.items import ItemType, Priority
 
 BASE = "2026-06-05"
 
@@ -191,9 +193,138 @@ def test_vague_date_does_not_keep_invented_date():
     assert r.items[0].needs_confirmation is True
 
 
+def test_load_context_empty_when_no_saved_preferences():
+    # 저장된 선호가 없으면 빈 컨텍스트 (autouse fixture 가 feedback.db 를 tmp 로 격리).
+    context = load_context()
+    assert context.preferences == []
+
+
+def test_load_context_reinjects_saved_preferences():
+    # 저장 -> load_context 가 그 선호를 다시 끌어와 ContextBundle.preferences 에 채운다.
+    save_user_preference(field="date", original_pattern="vague", preferred="pending")
+    save_user_preference(field="assignee", original_pattern="성종", preferred="박성종")
+
+    context = load_context()
+
+    by_field = {p["field"]: p for p in context.preferences}
+    assert by_field["date"]["original_pattern"] == "vague"
+    assert by_field["date"]["preferred"] == "pending"
+    assert by_field["assignee"]["preferred"] == "박성종"
+
+
+def test_load_context_falls_back_to_empty_on_db_error(monkeypatch):
+    # 선호 로드가 실패해도 분석은 막지 않는다 (빈 선호 폴백).
+    def _boom():
+        raise RuntimeError("db unavailable")
+
+    monkeypatch.setattr("app.analysis.pipeline.load_user_preferences", _boom)
+    context = load_context()
+    assert context.preferences == []
+
+
+def test_load_context_includes_existing_items_summary(tmp_db):
+    # 저장소의 기존 일정/할일이 요약 문자열로 프롬프트 컨텍스트에 들어간다.
+    from app.tools.local_tools import create_calendar_event, create_task
+
+    create_calendar_event("팀 회의", date(2026, 6, 12), "10:00")
+    create_task("API 테스트 정리", assignee="동근", due_date=date(2026, 6, 6))
+
+    summary = load_context().existing_items_summary
+    assert "팀 회의" in summary
+    assert "API 테스트 정리" in summary
+    assert "동근" in summary
+
+
+def test_load_context_summary_empty_on_storage_error(monkeypatch):
+    # 저장소 조회 실패 시 요약은 빈 문자열(분석 계속).
+    def _boom():
+        raise RuntimeError("storage unavailable")
+
+    monkeypatch.setattr("app.analysis.pipeline.load_calendar_events", _boom)
+    assert load_context().existing_items_summary == ""
+
+
+def test_load_context_reads_guidelines_json(tmp_path, monkeypatch):
+    # guidelines.json을 읽어 ContextBundle.guidelines에 채운다.
+    p = tmp_path / "guidelines.json"
+    p.write_text('[{"rule": "테스트 지침"}]', encoding="utf-8")
+    monkeypatch.setattr("app.analysis.pipeline._GUIDELINES_PATH", p)
+    guidelines = load_context().guidelines
+    assert any(g.get("rule") == "테스트 지침" for g in guidelines)
+
+
+def test_load_context_guidelines_empty_when_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.analysis.pipeline._GUIDELINES_PATH", tmp_path / "nope.json")
+    assert load_context().guidelines == []
+
+
+def test_load_context_guidelines_empty_on_broken_json(tmp_path, monkeypatch):
+    p = tmp_path / "guidelines.json"
+    p.write_text("{ broken json", encoding="utf-8")
+    monkeypatch.setattr("app.analysis.pipeline._GUIDELINES_PATH", p)
+    assert load_context().guidelines == []
+
+
+def test_postprocess_applies_preference_override():
+    # 선호 패턴과 일치하는 필드를 코드가 강제 치환(LLM이 안 따랐을 때의 이중 안전장치).
+    item = Item(id="item-0", type=ItemType.task, title="발표자료", assignee="성종")
+    ctx = ContextBundle(
+        preferences=[{"field": "assignee", "original_pattern": "성종", "preferred": "박성종"}]
+    )
+    out = _postprocess(AnalyzeResult(items=[item]), ctx)
+    assert out.items[0].assignee == "박성종"
+
+
+def test_postprocess_no_change_when_pattern_mismatch():
+    item = Item(id="item-0", type=ItemType.task, title="발표자료", assignee="우태")
+    ctx = ContextBundle(
+        preferences=[{"field": "assignee", "original_pattern": "성종", "preferred": "박성종"}]
+    )
+    out = _postprocess(AnalyzeResult(items=[item]), ctx)
+    assert out.items[0].assignee == "우태"
+
+
+def test_postprocess_pass_through_without_preferences():
+    item = Item(id="item-0", type=ItemType.task, title="x", assignee="성종")
+    out = _postprocess(AnalyzeResult(items=[item]), ContextBundle())
+    assert out.items[0].assignee == "성종"
+
+
+def test_postprocess_applies_enum_preference_with_type_coercion():
+    # priority(enum) 선호도 직렬화 비교 + 재검증으로 타입이 강제된다.
+    item = Item(id="item-0", type=ItemType.task, title="x", priority=Priority.medium)
+    ctx = ContextBundle(
+        preferences=[{"field": "priority", "original_pattern": "medium", "preferred": "high"}]
+    )
+    out = _postprocess(AnalyzeResult(items=[item]), ctx)
+    assert out.items[0].priority == Priority.high
+
+
+def test_postprocess_skips_invalid_preference_without_crashing():
+    # preferred 값이 필드 타입에 invalid(date 필드에 비날짜)면 보정을 건너뛰고 원본 유지.
+    # ValidationError 가 analyze 전체를 실패시키지 않아야 한다(best-effort).
+    item = Item(id="item-0", type=ItemType.task, title="발표자료", due_date=date(2026, 6, 6))
+    ctx = ContextBundle(
+        preferences=[
+            {"field": "due_date", "original_pattern": "2026-06-06", "preferred": "내일까지"}
+        ]
+    )
+    out = _postprocess(AnalyzeResult(items=[item]), ctx)
+    assert out.items[0].due_date == date(2026, 6, 6)  # 원본 유지(크래시 없음)
+
+
 if __name__ == "__main__":
+    import inspect
+
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
+    ran = 0
     for fn in fns:
+        # load_context 선호 테스트는 pytest fixture(tmp DB 격리/monkeypatch)에 의존하므로
+        # 직접 실행 시 실제 feedback.db 를 오염시키지 않도록 건너뛴다.
+        if inspect.signature(fn).parameters or "load_context" in fn.__name__:
+            print(f"SKIP {fn.__name__} (needs pytest fixtures)")
+            continue
         fn()
+        ran += 1
         print(f"PASS {fn.__name__}")
-    print(f"\n{len(fns)} passed")
+    print(f"\n{ran} passed")

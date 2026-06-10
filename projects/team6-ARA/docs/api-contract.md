@@ -2,8 +2,9 @@
 
 FE <-> BE 간 HTTP 계약. 스키마 상세는 [data-model.md](data-model.md), 흐름은 [agent-design.md](agent-design.md) 참조.
 
-정본 구현: `backend/app/api/routes/run.py`. 6-3(피드백/선호)의 `/feedback/*`, `/confirm`은
-feat/preferences 에서 별도 정의되며, 향후 같은 그래프로 흡수 예정([agent-design.md](agent-design.md) 6-3 seam).
+정본 구현: `backend/app/api/routes/run.py`. 6-3(피드백/선호)은 단일 그래프에 흡수됐다
+(승인 후 수정 항목이 있으면 2차 "선호 확인" interrupt -> `/resume(preference_choices)`).
+`/feedback/*`,`/confirm`은 6-3 로직을 직접 호출하는 보조 라우터로 남는다([agent-design.md](agent-design.md)).
 
 ## 동기식 승인 = 단일 그래프 interrupt/resume
 
@@ -14,8 +15,8 @@ feat/preferences 에서 별도 정의되며, 향후 같은 그래프로 흡수 �
 2. 사용자가 항목별 승인/수정/제외 결정.
 3. `POST /resume` -> 결정으로 그래프 재개. Tool 실행 후 종료(`status=completed`).
 
-> HITL이 있으므로 호출은 최소 2회(run -> resume)다. 향후 6-3가 그래프에 붙으면 선호 확인 지점에서
-> interrupt가 한 번 더 생겨 resume가 추가될 수 있다(같은 session_id 로 이어짐).
+> HITL은 2단계다. 1차 승인(run -> resume) 후, 수정 항목이 있으면 6-3 선호 확인 지점에서
+> interrupt가 한 번 더 생겨 2차 resume(preference_choices)가 추가된다(같은 session_id 로 이어짐).
 
 ## 엔드포인트
 
@@ -106,6 +107,11 @@ feat/preferences 에서 별도 정의되며, 향후 같은 그래프로 흡수 �
   ]
 }
 ```
+1차 resume 응답은 둘로 갈린다:
+- 수정(modify) 항목이 없으면 바로 `status=completed`(아래).
+- 수정 항목이 있으면 그 `(original, modified)` 쌍이 6-3 선호 후보가 되어 2차 interrupt 로 정지,
+  `status=awaiting_preference` + `candidates:[{field, original, preferred, pattern_type, log_id}]` 반환.
+
 응답 (RunResponse, completed):
 ```json
 {
@@ -118,9 +124,22 @@ feat/preferences 에서 별도 정의되며, 향후 같은 그래프로 흡수 �
     {"item_id": "item-2", "status": "needs_recheck", "recheck_required": true, "modified_item": {...}}
   ],
   "summary": {"executed": 1, "excluded": 1, "failed": 0, "recheck": 1},
-  "final_output": { "summary": {...}, "executed": [...], "excluded": [...], "pending": [...], "needs_recheck": [...] }
+  "final_output": { "summary": {...}, "executed": [...], "excluded": [...], "pending": [...], "needs_recheck": [...] },
+  "confirmed_output": null
 }
 ```
+
+**2차(선호 확인) resume:** `awaiting_preference` 를 받은 뒤 후보별 결정을 보낸다.
+```json
+{
+  "session_id": "demo-conflict",
+  "preference_choices": [
+    {"field": "type", "action": "save", "original": "memo", "preferred": "task", "log_id": 1}
+  ]
+}
+```
+응답: `status=completed` + `confirmed_output:{saved, saved_fields, saved_count, final_output}`.
+`action` 은 `save`(User Preference Store 저장) / `one_time` / `dismiss`.
 
 #### action 의미
 - `approve`: 실행 직전 `item.type`에서 tool 재도출(echo 불신) + 필수 필드 재확인 -> Tool 실행 + 저장.
@@ -142,6 +161,9 @@ feat/preferences 에서 별도 정의되며, 향후 같은 그래프로 흡수 �
 Mock 시나리오 입력을 `/run` 으로 흘려보내는 데모 트리거. scenario: multi / vague_risk / conflict.
 - 응답: RunResponse. / 알 수 없는 scenario: 404.
 
-## 6-3 엔드포인트 (feat/preferences, 별도)
-`/feedback/analyze`, `/feedback/confirm`, `/confirm/` 은 현재 별도 라우터로 공존한다.
-단일 그래프 통합 후에는 승인 이후 흐름이 그래프 내부(interrupt)로 들어와 별도 호출이 줄어들 수 있다.
+## 6-3 엔드포인트 (보조 라우터)
+6-3 선호 흐름은 단일 그래프에 흡수됐다(`/run` -> 1차 승인 -> `/resume(decisions)` -> 2차 선호 interrupt
+-> `/resume(preference_choices)`). **정본 경로는 그래프(/run,/resume)이며 FE 도 이를 쓴다.**
+
+`/feedback/analyze`, `/feedback/confirm`, `/confirm/` 은 6-3 로직을 HTTP 로 직접 호출하는 보조 경로로
+남아 있다(단위 테스트/하위호환). 정본: `backend/app/api/routes/feedback.py`, `confirm.py`.

@@ -1,25 +1,60 @@
 import React, { useState } from "react";
 import styled from "styled-components";
-import { mockPreferenceCandidates } from "../mock";
-import { Btn, BtnRow, MockNote, MockBadge } from "../styles/common";
+import { resumeRun } from "../api/analyze";
+import { Btn, BtnRow } from "../styles/common";
 import { theme, radius } from "../styles/theme";
 
-// candidates: BE /feedback/analyze 응답 형태 [{ field, original, preferred }]
-// 없으면 목데이터 폴백
-export default function PreferenceModal({ candidates = [], onDone }) {
-    const isReal = candidates.length > 0;
-    const list = isReal ? candidates : mockPreferenceCandidates;
-
+// candidates: 그래프 2차 interrupt 의 선호 후보 [{ field, original, preferred, pattern_type, log_id }]
+// 후보가 없으면(그래프가 바로 완료) 안내 후 건너뛴다. 목데이터는 쓰지 않는다.
+export default function PreferenceModal({ sessionId, candidates = [], onDone }) {
+    // 후보는 index 로 식별한다(여러 항목이 같은 field 를 수정하면 field 가 중복될 수 있음).
     const [actions, setActions] = useState({});
+    const [submitting, setSubmitting] = useState(false);
 
-    function setAction(field, action) {
-        setActions((p) => ({ ...p, [field]: action }));
+    function setAction(idx, action) {
+        setActions((p) => ({ ...p, [idx]: action }));
     }
 
-    function handleSave() {
-        // '앞으로도 적용' 선택된 후보만 추려서 상위로 전달
-        const saved = list.filter((c) => actions[c.field] === "save");
-        onDone(saved);
+    async function handleSave() {
+        // 모든 후보를 선택된 action 으로 2차 resume 에 보낸다(미선택은 dismiss).
+        const preference_choices = candidates.map((c, i) => ({
+            field: c.field,
+            action: actions[i] || "dismiss",
+            original: c.original,
+            preferred: c.preferred,
+            log_id: c.log_id,
+        }));
+        setSubmitting(true);
+        try {
+            const result = await resumeRun(sessionId, { preference_choices });
+            onDone(result);
+        } catch (e) {
+            // 저장 실패해도 흐름은 진행(데모 안전)
+            onDone(null);
+        }
+    }
+
+    // 선호 후보가 없으면 모달 대신 안내 + 건너뛰기
+    if (candidates.length === 0) {
+        return (
+            <Overlay>
+                <ModalCard>
+                    <ModalHeader>
+                        <span>★ 선호 저장 확인</span>
+                    </ModalHeader>
+                    <ModalBody>
+                        <EmptyMsg>
+                            저장할 선호 후보가 없습니다.<br />
+                            <Muted>수정한 항목이 없어 학습할 선호 패턴이 없어요.</Muted>
+                        </EmptyMsg>
+                        <ModalFooter>
+                            <span />
+                            <Btn $primary onClick={() => onDone(null)}>건너뛰기</Btn>
+                        </ModalFooter>
+                    </ModalBody>
+                </ModalCard>
+            </Overlay>
+        );
     }
 
     return (
@@ -27,46 +62,40 @@ export default function PreferenceModal({ candidates = [], onDone }) {
             <ModalCard>
                 <ModalHeader>
                     <span>★ 선호 저장 확인</span>
-                    <ModalSub>승인·저장 직후 · 닫으면 결과 요약</ModalSub>
+                    <ModalSub>수정 직후 · 닫으면 결과 요약</ModalSub>
                 </ModalHeader>
                 <ModalBody>
                     <ModalDesc>
-                        {!isReal && <><MockBadge />&nbsp;</>}
                         이번 수정에서 <b>반복 가능한 패턴</b>을 선호 후보로 감지했어요.
                         앞으로도 적용할 규칙만 선택하세요.{" "}
                         <Muted>(승인 전엔 장기 저장 안 함)</Muted>
                     </ModalDesc>
 
-                    {list.length === 0 && (
-                        <EmptyMsg>수정된 항목이 없어 선호 후보가 없어요.</EmptyMsg>
-                    )}
-
-                    {list.map((c) => (
-                        <CandCard key={c.field}>
+                    {candidates.map((c, i) => (
+                        <CandCard key={i}>
                             <CandRule>
-                                {isReal
-                                    ? `"${c.field}" 필드: ${JSON.stringify(c.original)} → ${JSON.stringify(c.preferred)}`
-                                    : c.rule}
+                                {`"${c.field}" 필드: ${JSON.stringify(c.original)} → ${JSON.stringify(c.preferred)}`}
                             </CandRule>
-                            {!isReal && (
+                            {c.pattern_type && (
                                 <CandBasis>
-                                    <span>근거</span>
-                                    <span>{c.basis}</span>
+                                    <span>패턴</span>
+                                    <span>{c.pattern_type === "recurring" ? "반복 패턴" : "1회성"}</span>
                                 </CandBasis>
                             )}
                             <BtnRow style={{ marginTop: "10px" }}>
-                                <Btn $sm $primary={actions[c.field] === "save"}     $ghost={actions[c.field] !== "save"}     onClick={() => setAction(c.field, "save")}>앞으로도 적용</Btn>
-                                <Btn $sm $primary={actions[c.field] === "one_time"} $ghost={actions[c.field] !== "one_time"} onClick={() => setAction(c.field, "one_time")}>이번만</Btn>
-                                <Btn $sm $warn={actions[c.field] === "dismiss"}     $ghost={actions[c.field] !== "dismiss"}   onClick={() => setAction(c.field, "dismiss")}>무시</Btn>
+                                <Btn $sm $primary={actions[i] === "save"}     $ghost={actions[i] !== "save"}     onClick={() => setAction(i, "save")}>앞으로도 적용</Btn>
+                                <Btn $sm $primary={actions[i] === "one_time"} $ghost={actions[i] !== "one_time"} onClick={() => setAction(i, "one_time")}>이번만</Btn>
+                                <Btn $sm $warn={actions[i] === "dismiss"}     $ghost={actions[i] !== "dismiss"}   onClick={() => setAction(i, "dismiss")}>무시</Btn>
                             </BtnRow>
                         </CandCard>
                     ))}
 
                     <ModalFooter>
                         <Muted>'앞으로도 적용'만 User Preference Store에 저장됩니다</Muted>
-                        <Btn $primary onClick={handleSave}>선택 저장 후 닫기</Btn>
+                        <Btn $primary disabled={submitting} onClick={handleSave}>
+                            {submitting ? "저장 중..." : "선택 저장 후 닫기"}
+                        </Btn>
                     </ModalFooter>
-                    {!isReal && <MockNote>※ 목데이터 폴백 · 항목 수정 시 BE /feedback/analyze 실제 후보 사용</MockNote>}
                 </ModalBody>
             </ModalCard>
         </Overlay>

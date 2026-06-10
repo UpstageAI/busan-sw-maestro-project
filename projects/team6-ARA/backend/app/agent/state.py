@@ -23,6 +23,9 @@ class AgentState(TypedDict, total=False):
     final_output: dict[str, Any]     # 최종 결과 요약 (6-3 Result Summary 입력)
     modifications: list[dict[str, Any]]  # 수정 항목 (original, modified) 쌍 -> 6-3 Feedback Analyzer 입력
 
-    # --- 6-3 피드백/선호 (feat/preferences, 향후 그래프 흡수) ---
-    draft: dict[str, Any]            # 6-3 가 사용
-    confirmed_output: dict[str, Any] # 6-3 가 사용
+    # --- 6-3 피드백/선호 (단일 그래프 흡수) ---
+    verified: bool                   # feedback_analyze: verify_result(final_output)
+    candidates: list[dict[str, Any]] # 선호 후보 (2차 interrupt payload)
+    preference_choices: list[dict[str, Any]]  # 후보별 사용자 결정 (2차 resume 입력)
+    confirmed_output: dict[str, Any] # preference_store: 저장 결과(saved_fields 등)
+    draft: dict[str, Any]            # (예약) apply_preferences 입력용

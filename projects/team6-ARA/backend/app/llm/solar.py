@@ -18,6 +18,9 @@ from app.schemas.analysis import ContextBundle
 
 logger = get_logger("llm.solar")
 
+# reasoning_effort 파라미터를 지원하는 모델(화이트리스트). 그 외 모델에 보내면 422.
+_REASONING_EFFORT_MODELS = {"solar-pro2", "solar-pro3"}
+
 _SYSTEM = """너는 비정형 텍스트에서 실행 항목을 뽑아 분류하는 분석기다.
 반드시 아래 JSON 스키마만 출력한다(설명/마크다운 금지).
 
@@ -29,6 +32,7 @@ _SYSTEM = """너는 비정형 텍스트에서 실행 항목을 뽑아 분류하�
     "date": "YYYY-MM-DD|null",
     "time": "HH:MM|null",
     "priority": "high|medium|low",
+    "mitigation": "string|null",
     "source_sentence": "근거 원문",
     "recommended_tool": "create_task|create_calendar_event|create_memo|create_risk_log",
     "type_certainty": 0.0-1.0,
@@ -53,8 +57,13 @@ _SYSTEM = """너는 비정형 텍스트에서 실행 항목을 뽑아 분류하�
   date_status="vague" 또는 needs_base_event=true로 두고 정확한 날짜를 지어내지 마라.
 - "안 되면", "실패하면", "대체", "Mock"처럼 실패 조건과 대응 방안이 함께 나오면
   task가 아니라 risk로 분류하고 recommended_tool="create_risk_log"를 사용한다.
-  대응 방안을 별도 task로 만들지 마라.
+  대응 방안을 별도 task로 만들지 말고 그 risk 항목의 mitigation 에 넣는다.
+  대응 방안이 없으면 mitigation=null. (risk 외 유형은 mitigation=null)
 - 한 입력에 여러 항목이 섞이면 독립 항목으로 분해한다.
+- User Preference 가 주어지면, 같은 field 에서 입력이 그 original_pattern 에 해당하는
+  상황일 때 사용자가 과거에 선택한 preferred 값을 기본값으로 반영한다.
+  단, 입력에 명시적으로 다른 값이 있으면 입력을 우선한다.
+- Guideline 이 주어지면 분석/분류 시 그 지침을 따른다(입력과 충돌하면 입력을 우선한다).
 - 실행 항목이 전혀 없으면 items=[] (빈 배열)."""
 
 
@@ -63,10 +72,11 @@ class SolarLLM:
         from langchain_upstage import ChatUpstage  # lazy
 
         self._model = os.getenv("SOLAR_MODEL", "solar-pro")
-        effort = os.getenv("SOLAR_REASONING_EFFORT")  # "high"|"low"|None
+        effort = os.getenv("SOLAR_REASONING_EFFORT")  # "high"|"medium"|"low"|None
         logger.info("SolarLLM init: model=%s reasoning_effort=%s", self._model, effort)
         kwargs: dict = {"model": self._model}
-        if effort and self._model != "solar-pro":  # reasoning_effort는 pro2/pro3 전용
+        # reasoning_effort 는 reasoning 지원 모델만 받는다(미지원 모델에 보내면 422).
+        if effort and self._model in _REASONING_EFFORT_MODELS:
             kwargs["reasoning_effort"] = effort
         self._llm = ChatUpstage(**kwargs)
 

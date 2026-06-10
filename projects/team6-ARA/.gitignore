@@ -22,3 +22,6 @@ package-lock.json
 
 # Windows ADS 메타데이터(WSL)
 *:Zone.Identifier
+
+*.pptx
+.ppt-work

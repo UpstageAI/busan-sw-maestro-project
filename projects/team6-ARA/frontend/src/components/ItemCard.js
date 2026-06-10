@@ -164,7 +164,7 @@ export default function ItemCard({ item, onApprove, onExclude, onEdit }) {
                 <BtnRow style={{ marginTop: "12px" }}>
                     {conflict?.type === "time_conflict" ? (
                         <>
-                            <Btn $sm $primary onClick={() => onApprove(item)}>승인(11시로)</Btn>
+                            <Btn $sm $primary onClick={() => onApprove(item)}>승인</Btn>
                             <Btn $sm $ghost onClick={() => setEditing(true)}>수정</Btn>
                             <Btn $sm $warn onClick={() => onExclude(item)}>Pending</Btn>
                         </>
