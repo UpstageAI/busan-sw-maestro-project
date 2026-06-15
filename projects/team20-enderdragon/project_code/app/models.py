@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import String, Text, DateTime, ForeignKey, func
+from sqlalchemy import String, Text, DateTime, ForeignKey, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -46,3 +46,19 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     session: Mapped["ChatSession"] = relationship(back_populates="messages")
+
+
+class CoachingState(Base):
+    """세션별 코칭 진척도 스냅샷 — 현재 목표·계획·완료한 하위목표·직전 인벤토리.
+
+    멀티턴에서 직전 계획 대비 진행을 비교(reconcile)하기 위해 세션당 한 행으로 유지한다.
+    구조가 자주 바뀔 수 있어 개별 컬럼 대신 JSON 한 덩어리로 둔다.
+    """
+
+    __tablename__ = "coaching_state"
+
+    thread_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    state: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )

@@ -6,7 +6,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import ChatSession, Message
+from app.models import ChatSession, Message, CoachingState
 
 
 def get_or_create_session(db: Session, thread_id: str, user_id: int | None = None) -> ChatSession:
@@ -73,3 +73,19 @@ def delete_session(db: Session, thread_id: str) -> bool:
     db.delete(session)
     db.commit()
     return True
+
+
+def get_coaching_state(db: Session, thread_id: str) -> dict | None:
+    """세션의 코칭 진척도 스냅샷(JSON)을 반환한다. 없으면 None."""
+    row = db.get(CoachingState, thread_id)
+    return row.state if row else None
+
+
+def upsert_coaching_state(db: Session, thread_id: str, state: dict) -> None:
+    """세션의 코칭 진척도 스냅샷을 저장/갱신한다 (세션당 한 행)."""
+    row = db.get(CoachingState, thread_id)
+    if row is None:
+        db.add(CoachingState(thread_id=thread_id, state=state))
+    else:
+        row.state = state
+    db.commit()

@@ -14,8 +14,9 @@ HISTORY_MESSAGE_LIMIT = 6
 logger = logging.getLogger(__name__)
 
 
-def build_initial_state(message: str, history_text: str = "", prev_was_clarification: bool = False, inventory=None, inventory_connected: bool = False) -> dict:
+def build_initial_state(message: str, history_text: str = "", prev_was_clarification: bool = False, inventory=None, inventory_connected: bool = False, game_state=None, thread_id: str = "") -> dict:
     return {
+        "thread_id": thread_id,
         "query": message,
         "history_text": history_text,
         "query_analysis": {},
@@ -28,6 +29,7 @@ def build_initial_state(message: str, history_text: str = "", prev_was_clarifica
         "prev_was_clarification": prev_was_clarification,
         "inventory": [i.model_dump() for i in (inventory or [])],
         "inventory_connected": inventory_connected,
+        "game_state": game_state.model_dump() if game_state else {},
     }
 
 
@@ -66,13 +68,13 @@ def _save_turn(thread_id: str, user_msg: str, assistant_msg: str, is_clarificati
 @router.post("/chat/sync", response_model=ChatResponse)
 async def chat_sync(request: ChatRequest):
     history, prev_clar = _load_history(request.thread_id)
-    result = await graph.ainvoke(build_initial_state(request.message, history, prev_clar, request.inventory, request.inventory_connected))
+    result = await graph.ainvoke(build_initial_state(request.message, history, prev_clar, request.inventory, request.inventory_connected, request.game_state, request.thread_id))
     answer = result.get("final_answer", "")
     _save_turn(
         request.thread_id, request.message, answer,
         is_clarification=bool(result.get("need_clarification")),
     )
-    return ChatResponse(answer=answer, domain=result.get("domain", ""), todos=result.get("todos", []))
+    return ChatResponse(answer=answer, domain=result.get("domain", ""), todos=result.get("todos", []), recipe=result.get("recipe"))
 
 
 @router.post("/chat")
@@ -84,31 +86,39 @@ async def chat_stream(request: ChatRequest):
         domain = ""
         sources: list[str] = []
         is_clarification = False
+        todos: list[str] = []
+        recipe = None
 
         try:
             async for event in graph.astream_events(
-                build_initial_state(request.message, history, prev_clar, request.inventory, request.inventory_connected), version="v2"
+                build_initial_state(request.message, history, prev_clar, request.inventory, request.inventory_connected, request.game_state, request.thread_id), version="v2"
             ):
                 kind = event.get("event", "")
                 name = event.get("name", "")
 
                 # 노드 완료 → 진행 상황 이벤트 전송
-                if kind == "on_chain_end" and name in ("analyze", "clarify", "retrieve", "respond", "ask"):
+                if kind == "on_chain_end" and name in ("analyze", "clarify", "retrieve", "web_search", "check_materials", "respond", "ask"):
                     output = event.get("data", {}).get("output", {})
 
                     if name == "analyze":
                         domain = output.get("domain", "")
                     elif name == "clarify":
                         is_clarification = bool(output.get("need_clarification", False))
-                    elif name == "retrieve":
-                        results = output.get("search_results", [])
-                        sources = list({
-                            r.get("metadata", {}).get("title", "")
-                            for r in results
-                            if r.get("metadata", {}).get("title")
-                        })
+                    elif name in ("retrieve", "web_search"):
+                        # web_search는 보강했을 때만 search_results를 갱신한다(스킵 시 빈 출력).
+                        results = output.get("search_results")
+                        if results:
+                            sources = list({
+                                r.get("metadata", {}).get("title", "")
+                                for r in results
+                                if r.get("metadata", {}).get("title")
+                            })
+                    elif name == "check_materials":
+                        recipe = output.get("recipe") or recipe  # 제작법 격자(있을 때만)
                     elif name in ("respond", "ask"):
                         final_answer = output.get("final_answer", final_answer)
+                        if output.get("todos"):
+                            todos = output["todos"]
 
                     yield f"data: {StreamEvent(event='node', node=name, data=json.dumps(output, ensure_ascii=False, default=str)).model_dump_json()}\n\n"
 
@@ -126,8 +136,9 @@ async def chat_stream(request: ChatRequest):
                 final_answer = "죄송해요, 답변을 생성하는 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요."
 
         _save_turn(request.thread_id, request.message, final_answer, is_clarification=is_clarification)
-        done_payload = {"answer": final_answer, "domain": domain, "sources": sources}
-        yield f"data: {StreamEvent(event='done', data=json.dumps(done_payload, ensure_ascii=False)).model_dump_json()}\n\n"
+        # 모드가 스트리밍에서도 할 일·제작법 격자를 받도록 done에 함께 싣는다.
+        done_payload = {"answer": final_answer, "domain": domain, "sources": sources, "todos": todos, "recipe": recipe}
+        yield f"data: {StreamEvent(event='done', data=json.dumps(done_payload, ensure_ascii=False, default=str)).model_dump_json()}\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 

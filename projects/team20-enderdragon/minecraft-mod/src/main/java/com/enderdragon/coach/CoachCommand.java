@@ -2,6 +2,7 @@ package com.enderdragon.coach;
 
 import com.enderdragon.coach.api.ChatResponse;
 import com.enderdragon.coach.api.CoachApiClient;
+import com.enderdragon.coach.api.GameStateSnapshot;
 import com.enderdragon.coach.api.InventorySnapshot;
 import com.enderdragon.coach.gui.TodoList;
 import com.mojang.brigadier.Command;
@@ -50,8 +51,9 @@ public final class CoachCommand {
         List<InventorySnapshot.InventoryItem> inv = (mc.player != null)
                 ? InventorySnapshot.capture(mc.player.getInventory())
                 : Collections.emptyList();
+        GameStateSnapshot.GameState gameState = GameStateSnapshot.capture(mc);
 
-        CoachApiClient.chat(message, inv).whenComplete((response, error) -> {
+        CoachApiClient.chat(message, inv, gameState).whenComplete((response, error) -> {
             MinecraftClient client = MinecraftClient.getInstance();
             client.execute(() -> {
                 if (error != null) {

@@ -22,9 +22,16 @@ public class ChatRequest {
     @SerializedName("inventory_connected")
     public final boolean inventoryConnected = true;
 
-    public ChatRequest(String message, String threadId, List<InventorySnapshot.InventoryItem> inventory) {
+    /** 현재 인게임 상태(시간·체력·좌표 등). 수집 불가 시 null. */
+    @SerializedName("game_state")
+    public final GameStateSnapshot.GameState gameState;
+
+    public ChatRequest(String message, String threadId,
+                       List<InventorySnapshot.InventoryItem> inventory,
+                       GameStateSnapshot.GameState gameState) {
         this.message = message;
         this.threadId = threadId;
         this.inventory = inventory != null ? inventory : Collections.emptyList();
+        this.gameState = gameState;
     }
 }

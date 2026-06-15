@@ -1,6 +1,7 @@
 package com.enderdragon.coach.gui;
 
 import com.enderdragon.coach.api.CoachApiClient;
+import com.enderdragon.coach.api.GameStateSnapshot;
 import com.enderdragon.coach.api.InventorySnapshot;
 import com.enderdragon.coach.gui.TodoList;
 import net.minecraft.client.MinecraftClient;
@@ -41,12 +42,16 @@ public class CoachScreen extends Screen {
     private int maxScroll = 0;
     private boolean stickToBottom = true;
 
+    // 최근 응답에 담겨 온 제작법 격자(있으면 제목 아래에 패널로 렌더). 없으면 숨김.
+    private final RecipeGridWidget recipeWidget = new RecipeGridWidget();
+
     public CoachScreen() {
         super(Text.literal("마크 코치"));
     }
 
     private int historyTop() {
-        return MARGIN + 14;
+        // 제작법 패널이 있으면 그만큼 대화 기록을 아래로 민다.
+        return MARGIN + 14 + recipeWidget.panelHeight();
     }
 
     private int historyBottom() {
@@ -80,6 +85,10 @@ public class CoachScreen extends Screen {
 
         // 제목
         context.drawText(this.textRenderer, this.title, MARGIN, MARGIN, 0xFFFFFFFF, false);
+
+        // 제작법 격자 패널(있을 때만) — 제목과 대화 기록 사이
+        recipeWidget.render(context, this.textRenderer, MARGIN, MARGIN + 14,
+                this.width - MARGIN * 2, mouseX, mouseY);
 
         int top = historyTop();
         int bottom = historyBottom();
@@ -146,23 +155,41 @@ public class CoachScreen extends Screen {
         List<InventorySnapshot.InventoryItem> inv = (mc.player != null)
                 ? InventorySnapshot.capture(mc.player.getInventory())
                 : Collections.emptyList();
+        GameStateSnapshot.GameState gameState = GameStateSnapshot.capture(mc);
 
-        CoachApiClient.chat(message, inv).whenComplete((response, error) ->
-                MinecraftClient.getInstance().execute(() -> {
-                    if (error != null) {
-                        pending.text = "(오류) " + describe(error);
-                    } else {
-                        String answer = response.answerOrEmpty();
-                        if (!answer.isBlank()) {
-                            // 할 일 목록: 백엔드가 만든 짧은 todos 우선, 없으면 answer 파싱으로 폴백
-                            if (response.hasTodos()) {
-                                TodoList.addAll(response.todos);
-                            } else {
-                                TodoList.parseAndAdd(answer);
-                            }
-                        }
-                        pending.text = answer.isBlank() ? "(빈 응답) 다시 물어봐 주세요." : answer;
+        // 토큰을 누적해 점진적으로 표시한다. 첫 토큰이 오면 "물어보는 중…" 자리표시를 지운다.
+        StringBuilder streamed = new StringBuilder();
+        CoachApiClient.chatStream(message, inv, gameState,
+                // onToken — 도착할 때마다 누적 텍스트를 갱신
+                token -> MinecraftClient.getInstance().execute(() -> {
+                    streamed.append(token);
+                    pending.text = streamed.toString();
+                    stickToBottom = true;
+                }),
+                // onComplete — 최종 답변·할 일·제작법 격자 반영
+                response -> MinecraftClient.getInstance().execute(() -> {
+                    String answer = response.answerOrEmpty();
+                    if (answer.isBlank()) {
+                        answer = streamed.length() > 0 ? streamed.toString() : "(빈 응답) 다시 물어봐 주세요.";
                     }
+                    pending.text = answer;
+                    if (!answer.isBlank()) {
+                        // 할 일 목록: 백엔드가 만든 짧은 todos 우선, 없으면 answer 파싱으로 폴백
+                        if (response.hasTodos()) {
+                            TodoList.addAll(response.todos);
+                        } else {
+                            TodoList.parseAndAdd(answer);
+                        }
+                    }
+                    // 제작법 격자: 제작 목표가 있으면 패널로 렌더
+                    if (response.hasRecipe()) {
+                        recipeWidget.set(response.recipe);
+                    }
+                    stickToBottom = true;
+                }),
+                // onError
+                error -> MinecraftClient.getInstance().execute(() -> {
+                    pending.text = "(오류) " + describe(error);
                     stickToBottom = true;
                 }));
     }
