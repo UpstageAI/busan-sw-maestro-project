@@ -2,12 +2,32 @@ import { useEffect, useRef } from "react";
 import { backgroundAsset, defaultBackgroundIdForCase, suspectAsset, suspectStatusText } from "../constants/presentation";
 import type { DialogueLogItem, DialogueRuntimeDiagnostics, GameEventFeedItem, Suspect, VisualState } from "../types";
 
+const TONE_KO: Record<string, string> = {
+  sharp_defensive: "날카롭게 방어",
+  calm_defensive: "침착하게 방어",
+  restrained_formal: "격식체",
+  evidence_shock: "충격 반응",
+  broken: "멘탈 붕괴",
+  formal: "정중하게",
+  tense: "긴장감",
+  neutral: "평온",
+  evasive: "회피",
+  aggressive: "공격적",
+  collapsed: "붕괴",
+  cooperative: "협조적",
+};
+
+function formatVoiceTone(tone: string): string {
+  return TONE_KO[tone] ?? tone.replace(/_/g, " ");
+}
+
 type InterrogationStageProps = {
   selectedSuspect?: Suspect;
   suspects: Suspect[];
   selectedSuspectId: string | null;
   latestAnswer: string;
   dialogueLog: DialogueLogItem[];
+  pendingUserMessage?: { text: string; suspectId: string } | null;
   eventFeed: GameEventFeedItem[];
   draftQuestion: string;
   questionHint?: string;
@@ -19,6 +39,8 @@ type InterrogationStageProps = {
   onDraftQuestionChange: (value: string) => void;
   onSubmitQuestion: () => void;
   onPresentEvidence: () => void;
+  onOpenRelations: () => void;
+  onOpenAccusation: () => void;
   onSelectSuspect: (suspectId: string) => void;
 };
 
@@ -28,6 +50,7 @@ export function InterrogationStage({
   selectedSuspectId,
   latestAnswer,
   dialogueLog,
+  pendingUserMessage,
   eventFeed,
   draftQuestion,
   questionHint,
@@ -39,6 +62,8 @@ export function InterrogationStage({
   onDraftQuestionChange,
   onSubmitQuestion,
   onPresentEvidence,
+  onOpenRelations,
+  onOpenAccusation,
   onSelectSuspect,
 }: InterrogationStageProps) {
   const visualAppliesToSelected = Boolean(
@@ -55,6 +80,31 @@ export function InterrogationStage({
   const stageAsset = suspectAsset(selectedSuspect?.id, expression);
   const stageMood = `${emotion}-${expression}-${tensionLevel}`;
   const diagnosticTone = runtimeDiagnostics?.fallbackUsed || runtimeDiagnostics?.degraded ? "fallback" : "api";
+  const reaction = runtimeDiagnostics?.characterReaction;
+  const helperSuggestion = runtimeDiagnostics?.helperSuggestion;
+  const showHelperSuggestion = Boolean(helperSuggestion && helperSuggestion.helperRoute !== "silent" && helperSuggestion.message);
+  const handleHelperAction = (actionType: string, targetId: string) => {
+    if (actionType === "ask_suspect" && targetId) {
+      onSelectSuspect(targetId);
+      return;
+    }
+    if (actionType === "open_relation" || actionType === "open_relations" || actionType === "nudge_relation") {
+      onOpenRelations();
+      return;
+    }
+    if (actionType === "open_accusation" || actionType === "prepare_accusation") {
+      onOpenAccusation();
+      return;
+    }
+    if (actionType === "try_contradiction" || actionType === "open_evidence") {
+      onPresentEvidence();
+      return;
+    }
+    onPresentEvidence();
+  };
+  const reactionRoute = runtimeDiagnostics?.characterReactionRoute ?? reaction?.reactionRoute ?? reaction?.route;
+  const reactionLabel = reaction?.label ?? reactionRoute;
+  const reactionSummary = reactionLabel ? `${reactionLabel}${reaction?.effect ? ` → ${reaction.effect}` : ""}` : undefined;
   const visibleProgressCount = runtimeDiagnostics?.appliedEventsCount ?? 0;
   const suspectById = new Map(suspects.map((suspect) => [suspect.id, suspect]));
   const suspectByName = new Map(suspects.map((suspect) => [suspect.name, suspect]));
@@ -110,6 +160,7 @@ export function InterrogationStage({
       <details className="interrogation-meta" aria-label="수사 상태">
         <summary>
           <span className={`runtime-badge ${diagnosticTone}`}>수사 기록</span>
+          {reactionSummary ? <span className="reaction-route-badge">AI 판단: {reactionSummary}</span> : null}
           <span>{runtimeDiagnostics?.fallbackUsed || runtimeDiagnostics?.degraded ? "기록 확인 중" : "진행 정상"}</span>
           <span>남은 질문 {remainingQuestions}/{questionLimit}</span>
         </summary>
@@ -117,6 +168,8 @@ export function InterrogationStage({
           <span>최근 진행: {visibleProgressCount > 0 ? `${visibleProgressCount}건 기록됨` : "새 기록 없음"}</span>
           <span>질문 사용: {runtimeDiagnostics?.previousRemainingQuestions ?? remainingQuestions}→{runtimeDiagnostics?.remainingQuestions ?? remainingQuestions}/{questionLimit}</span>
           <span>분위기: {emotion}/{tensionLevel}</span>
+          {reactionRoute ? <span>분기: {reactionRoute}{typeof reaction?.confidence === "number" ? ` · ${Math.round(reaction.confidence * 100)}%` : ""}</span> : null}
+          {reaction?.playerFacingReason ? <span>판단 근거: {reaction.playerFacingReason}</span> : null}
           {runtimeDiagnostics?.blockedReason ? <span className="diagnostic-alert">응답 보류: 공개 가능한 답변으로 조정 중</span> : null}
         </div>
       </details>
@@ -154,6 +207,7 @@ export function InterrogationStage({
             const speaker = speakerFor(item);
             const isDetective = speaker.kind === "detective";
             const isSystem = speaker.kind === "system";
+            const vTag = item.voiceTag ? formatVoiceTone(item.voiceTag) : null;
             return (
               <article key={item.id} className={`turn-bubble ${isDetective ? "detective" : isSystem ? "system" : "suspect"}`}>
                 {!isDetective && !isSystem ? (
@@ -166,6 +220,7 @@ export function InterrogationStage({
                     <strong>{speaker.name}</strong>
                     <em>{speaker.role}{item.suspectId && speaker.kind === "detective" ? ` → ${suspectById.get(item.suspectId)?.name ?? item.suspectId}` : ""}</em>
                   </header>
+                  {vTag ? <span className="voice-tag" aria-label={`발화 상태: ${vTag}`}>{vTag}</span> : null}
                   <p>{item.text}</p>
                 </div>
               </article>
@@ -176,6 +231,32 @@ export function InterrogationStage({
               <div><header><strong>기록</strong><em>대기</em></header><p>{latestAnswer || "첫 질문을 입력하면 탐정과 용의자의 대화가 말풍선으로 누적됩니다."}</p></div>
             </article>
           )}
+          {pendingUserMessage ? (
+            <article className="turn-bubble detective pending" aria-label="전송 중인 질문">
+              <span className="turn-avatar" aria-hidden="true">探</span>
+              <div>
+                <header>
+                  <strong>탐정</strong>
+                  <em>질문{pendingUserMessage.suspectId ? ` → ${suspectById.get(pendingUserMessage.suspectId)?.name ?? ""}` : ""}</em>
+                </header>
+                <p>{pendingUserMessage.text}</p>
+              </div>
+            </article>
+          ) : null}
+          {busy && selectedSuspect ? (
+            <article className="turn-bubble suspect typing-bubble" aria-label={`${selectedSuspect.name} 응답 중`} aria-live="polite">
+              <img src={suspectAsset(selectedSuspect.id, expression)} alt={`${selectedSuspect.name} 만화 초상`} />
+              <div>
+                <header>
+                  <strong>{selectedSuspect.name}</strong>
+                  <em>생각 중…</em>
+                </header>
+                <span className="typing-dots" aria-hidden="true">
+                  <i /><i /><i />
+                </span>
+              </div>
+            </article>
+          ) : null}
         </div>
       </div>
 

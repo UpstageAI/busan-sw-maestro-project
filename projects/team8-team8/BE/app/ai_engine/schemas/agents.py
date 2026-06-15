@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import Field
 
-from app.ai_engine.schemas.common import AllowedEventPolicy, CharacterKnowledgePack, FlexibleModel, PersonaOverlay, PersonaVariant, ProposedEvent
+from app.ai_engine.schemas.base import FlexibleModel
+from app.ai_engine.schemas.events import AllowedEventPolicy, ProposedEvent
+from app.ai_engine.schemas.knowledge_pack import CharacterKnowledgePack
+from app.ai_engine.schemas.persona import PersonaOverlay, PersonaVariant
 from app.ai_engine.schemas.dialogue import AllowedStatement, DialogueRequest, SourceRefs
 
 if TYPE_CHECKING:
-    from app.ai_engine.application.knowledge_retriever import CharacterRetrievedContext, GameMasterEventContext
+    from app.ai_engine.schemas.retrieval import CharacterRetrievedContext, GameMasterEventContext
 
 
 class CharacterAgentInput(FlexibleModel):
@@ -57,6 +60,62 @@ class DraftCharacterReply(FlexibleModel):
     providerConfigured: bool | None = None
 
 
+ReactionRoute = Literal[
+    "answer_relevant",
+    "deflect_irrelevant",
+    "reject_false_premise",
+    "challenge_player_contradiction",
+    "react_to_valid_pressure",
+    "ask_clarification",
+    "refuse_meta_or_private",
+]
+
+PlayerClaimAssessment = Literal[
+    "grounded_question",
+    "irrelevant",
+    "unsupported_claim",
+    "contradicts_visible_context",
+    "valid_pressure",
+    "ambiguous",
+    "meta_or_private",
+]
+
+ResponseIntent = Literal[
+    "answer_visible_fact",
+    "deflect_in_character",
+    "reject_premise",
+    "point_out_inconsistency",
+    "acknowledge_conflict_without_confession",
+    "ask_specific_followup",
+    "refuse_in_world",
+]
+
+
+class CharacterReactionJudgeInput(FlexibleModel):
+    payload: DialogueRequest
+    retrieved_context: Any | None = Field(default=None, exclude=True)
+    providerDegraded: bool = False
+
+
+class CharacterReactionDecision(FlexibleModel):
+    owner: str = "CharacterReactionJudgeAgent"
+    suspectId: str
+    reactionRoute: ReactionRoute = "answer_relevant"
+    confidence: float = Field(default=0.65, ge=0, le=1)
+    playerClaimAssessment: PlayerClaimAssessment = "grounded_question"
+    characterStance: str | None = "controlled"
+    responseIntent: ResponseIntent = "answer_visible_fact"
+    referencedEvidenceIds: list[str] = Field(default_factory=list)
+    referencedStatementIds: list[str] = Field(default_factory=list)
+    referencedTimelineIds: list[str] = Field(default_factory=list)
+    referencedContradictionIds: list[str] = Field(default_factory=list)
+    stateIntent: dict[str, Any] | None = None
+    rationale: str | None = None
+    playerFacingReason: str | None = None
+    source: str = "deterministic-public-context"
+    validatorFindings: dict[str, Any] = Field(default_factory=dict)
+
+
 class DialogueDirectorInput(FlexibleModel):
     payload: DialogueRequest
     retrieved_context: Any | None = Field(default=None, exclude=True)
@@ -69,6 +128,8 @@ class DialogueDirectorPlan(FlexibleModel):
     styleDirectives: list[str] = Field(default_factory=list)
     forbiddenClaims: list[str] = Field(default_factory=list)
     focusTerms: list[str] = Field(default_factory=list)
+    answerPlan: dict[str, Any] = Field(default_factory=dict)
+    functionCall: dict[str, Any] | None = None
     reason: str | None = None
 
 
@@ -86,6 +147,7 @@ class LightRuleCheckInput(FlexibleModel):
     intent: str | None = None
     suspectName: str | None = None
     dialogueDirectorPlan: DialogueDirectorPlan | None = None
+    generatedSeed: str | None = None
     # CharacterKnowledgeRetriever 결과 (재생성 품질 개선에 사용, 없으면 기본 동작)
     retrieved_context: Any | None = Field(default=None, exclude=True)
 
