@@ -10,26 +10,88 @@ from __future__ import annotations
 import os
 import threading
 import time
-import uuid
 from typing import Dict, Iterator, List, Optional, Tuple
 
 import requests
 
-from src.api.types import AgentEvent, Hypothesis, Project
+from src.api.types import AgentEvent, ExperimentReport, Hypothesis, Project
 
 _DEFAULT_BASE_URL = "http://localhost:8000"
 _POLL_INTERVAL = 1.5
 _MAX_POLLS = 400  # 폴링 안전 상한(약 10분) — 에이전트 미동작 시 무한 대기 방지
 
 
+def _phase_from_task(current_task: str) -> str:
+    """Map a status.yml task label to a compact UI phase name."""
+    if "설계" in current_task:
+        return "실험 설계"
+    if "EDA" in current_task:
+        return "EDA"
+    if "학습" in current_task:
+        return "학습/평가"
+    if "보고서" in current_task:
+        return "보고서 작성"
+    if "완료" in current_task:
+        return "완료"
+    if "실패" in current_task or "필터링" in current_task:
+        return "오류"
+    return "진행 중"
+
+
+def _new_progress_events(
+    history: list[dict],
+    seen_tasks: dict[str, str],
+) -> list[AgentEvent]:
+    """Return task transitions not yet emitted, tracked independently per experiment."""
+    events: list[AgentEvent] = []
+    for item in sorted(history, key=lambda value: value.get("last_updated") or ""):
+        exp_id = str(item.get("exp_id") or "unknown")
+        current_task = item.get("current_task")
+        if not current_task or seen_tasks.get(exp_id) == current_task:
+            continue
+        seen_tasks[exp_id] = current_task
+        events.append(
+            AgentEvent(
+                _phase_from_task(current_task),
+                "step",
+                f"실험 {exp_id[:8]} · {current_task}",
+            )
+        )
+    return events
+
+
+def _new_score_events(
+    history: list[dict],
+    seen_score_exp_ids: set[str],
+) -> list[AgentEvent]:
+    """Return newly available scores without parallel-experiment duplication."""
+    events: list[AgentEvent] = []
+    for item in history:
+        exp_id = str(item.get("exp_id") or "unknown")
+        score = item.get("score")
+        if score is None or exp_id in seen_score_exp_ids:
+            continue
+        seen_score_exp_ids.add(exp_id)
+        events.append(
+            AgentEvent(
+                "학습/평가",
+                "metric",
+                f"실험 {exp_id[:8]} · 점수 {score}",
+                score=score,
+            )
+        )
+    return events
+
+
 class BackendStore:
     """HypoStore 구현(실제 백엔드 연동). 세션 동안 메모리 캐시를 함께 사용한다."""
 
     def __init__(self, base_url: Optional[str] = None, u_id: str = "demo_user") -> None:
-        self._base_url = (base_url or os.getenv("HYPOLOOP_BACKEND_URL", _DEFAULT_BASE_URL)).rstrip("/")
+        configured_url = os.getenv("HYPOLOOP_BACKEND_URL") or os.getenv("HYPOLOOP_API_URL")
+        self._base_url = (base_url or configured_url or _DEFAULT_BASE_URL).rstrip("/")
         self._u_id = u_id
         self._session = requests.Session()
-        self._name_overrides: Dict[str, str] = {}
+        self._projects: Dict[str, Project] = {}
         self._hyps: Dict[str, Hypothesis] = {}
         self._threads: Dict[str, threading.Thread] = {}
 
@@ -51,6 +113,11 @@ class BackendStore:
             return None
         return r.json()
 
+    def _patch(self, path: str, **kwargs) -> object:
+        r = self._session.patch(self._url(path), timeout=30, **kwargs)
+        r.raise_for_status()
+        return r.json()
+
     def _delete(self, path: str, **kwargs) -> None:
         r = self._session.delete(self._url(path), timeout=30, **kwargs)
         r.raise_for_status()
@@ -60,30 +127,83 @@ class BackendStore:
     # ------------------------------------------------------------------
     def list_projects(self) -> List[Project]:
         items = self._get("/projects")
-        projects = [
-            Project(project_id=d["project_id"],
-                    name=self._name_overrides.get(d["project_id"], d["name"]))
-            for d in items
-        ]
-        if not projects:
-            # 데모 편의를 위해 최초 1개를 자동 생성한다(이름은 고정값).
-            projects = [self.create_project("Hypo Loop 프로젝트")]
+        projects = []
+        for item in items:
+            project_id = item["project_id"]
+            project = self._projects.get(project_id)
+            if project is None:
+                project = Project(project_id=project_id, name=item["name"])
+                self._projects[project_id] = project
+            else:
+                project.name = item["name"]
+
+            try:
+                cards = self._get(f"/projects/{project_id}/data-cards")
+            except requests.RequestException:
+                cards = []
+            for card in cards:
+                role = card.get("role")
+                filename = card.get("original_filename", "")
+                if role == "train":
+                    project.train_csv = project.train_csv or "uploaded"
+                    project.train_filename = filename
+                elif role == "test":
+                    project.test_csv = project.test_csv or "uploaded"
+                    project.test_filename = filename
+                elif role == "description":
+                    project.description = project.description or "uploaded"
+                    project.desc_filename = filename
+            projects.append(project)
         return projects
+
+    def get_project(self, project_id: str) -> Project:
+        project = self._projects.get(project_id)
+        if project is None:
+            self.list_projects()
+            project = self._projects.get(project_id)
+        if project is None:
+            raise KeyError(project_id)
+        return project
 
     def create_project(self, name: str) -> Project:
         data = self._post("/projects", json={"name": name})
         project_id = data["project_id"]
-        self._name_overrides[project_id] = name
-        return Project(project_id=project_id, name=name)
+        project = Project(project_id=project_id, name=data["name"])
+        self._projects[project_id] = project
+        return project
 
     def rename_project(self, project_id: str, name: str) -> Project:
-        # 프로젝트 이름은 데이터 계층에 저장하지 않는 고정 항목 — 화면 표시만 갱신한다.
-        self._name_overrides[project_id] = name
-        return Project(project_id=project_id, name=name)
+        return self.update_project(project_id, name=name)
+
+    def update_project(self, project_id: str, **fields) -> Project:
+        project = self.get_project(project_id)
+        name = fields.get("name")
+        if name is not None:
+            data = self._patch(f"/projects/{project_id}", json={"name": name})
+            project.name = data["name"]
+
+        uploads = (
+            ("train", "train_csv", "train_filename"),
+            ("test", "test_csv", "test_filename"),
+            ("description", "description", "desc_filename"),
+        )
+        for role, content_field, filename_field in uploads:
+            content = fields.get(content_field)
+            filename = fields.get(filename_field)
+            if content is None or filename is None:
+                continue
+            self._post(
+                f"/projects/{project_id}/data-cards",
+                data={"name": filename, "role": role},
+                files={"file": (filename, content.encode("utf-8"))},
+            )
+            setattr(project, content_field, content)
+            setattr(project, filename_field, filename)
+        return project
 
     def delete_project(self, project_id: str) -> None:
         self._delete(f"/projects/{project_id}")
-        self._name_overrides.pop(project_id, None)
+        self._projects.pop(project_id, None)
         for hid in [h.hypothesis_id for h in self._hyps.values() if h.project_id == project_id]:
             self._hyps.pop(hid, None)
 
@@ -162,6 +282,11 @@ class BackendStore:
                 h.events.append(ev)
         except KeyError:
             return
+        except requests.RequestException as exc:
+            h = self._hyps.get(hypothesis_id)
+            if h is not None:
+                h.status = "error"
+                h.events.append(AgentEvent("오류", "log", str(exc)))
 
     def run(self, hypothesis_id: str) -> Iterator[AgentEvent]:
         h = self._hyps[hypothesis_id]
@@ -173,8 +298,8 @@ class BackendStore:
         yield AgentEvent("트리거", "step", "백엔드가 가설 yml을 ready로 표시하고 에이전트를 호출했습니다")
         yield AgentEvent("대기", "log", "에이전트가 실험을 진행하면 점수/보고서가 자동으로 채워집니다 (현재는 폴링 대기 중)")
 
-        seen_scores = 0
-        last_seen_task = None
+        seen_tasks: dict[str, str] = {}
+        seen_score_exp_ids: set[str] = set()
         for _ in range(_MAX_POLLS):
             time.sleep(_POLL_INTERVAL)
             try:
@@ -184,18 +309,13 @@ class BackendStore:
                 continue
 
             history = report.get("score_history", [])
-            if history:
-                latest_task = history[-1].get("current_task")
-                if latest_task and latest_task != last_seen_task:
-                    yield AgentEvent("진행 중", "step", f"에이전트가 {latest_task}를 수행중입니다")
-                    last_seen_task = latest_task
+            for event in _new_progress_events(history, seen_tasks):
+                yield event
 
-            scores = [e["score"] for e in history if e.get("score") is not None]
-            while seen_scores < len(scores):
-                score = scores[seen_scores]
-                seen_scores += 1
-                h.score_history.append(score)
-                yield AgentEvent("학습/평가", "metric", f"실험 점수 {score}", score=score)
+            for event in _new_score_events(history, seen_score_exp_ids):
+                if event.score is not None:
+                    h.score_history.append(event.score)
+                yield event
 
             statuses = [e.get("status") for e in history]
             if any(s == "failed" for s in statuses):
@@ -214,6 +334,7 @@ class BackendStore:
         texts = [t["text"] for t in report.get("analysis_texts", []) if t.get("text")]
         h.analysis_text = "\n".join(texts)
         h.report_md = self._build_report_md(h, report)
+        h.experiment_reports = self._experiment_reports(report)
         h.status = "done"
         yield AgentEvent("보고서 작성", "log", "보고서 작성 완료")
 
@@ -233,6 +354,21 @@ class BackendStore:
             f"## 분석\n\n{h.analysis_text or '에이전트가 작성한 분석 텍스트가 없습니다.'}\n"
         )
 
+    @staticmethod
+    def _experiment_reports(report: dict) -> List[ExperimentReport]:
+        """Convert backend experiment report payloads into frontend models."""
+        return [
+            ExperimentReport(
+                exp_id=item["exp_id"],
+                status=item.get("status") or "unknown",
+                score=item.get("score"),
+                report_md=item.get("report_md") or "",
+                report_dir=item.get("report_dir") or "",
+            )
+            for item in report.get("experiment_reports", [])
+            if item.get("report_md")
+        ]
+
     # ------------------------------------------------------------------
     # 보고서 / 집계
     # ------------------------------------------------------------------
@@ -251,7 +387,7 @@ class BackendStore:
         if h is None:
             raise KeyError(hypothesis_id)
 
-        if h.status == "done" and not h.report_md:
+        if h.status == "done" and (not h.report_md or not h.experiment_reports):
             report = self._get(f"/hypotheses/{hypothesis_id}/report",
                                params={"project_id": h.project_id})
             h.best_score = report.get("best_score")
@@ -260,6 +396,7 @@ class BackendStore:
             texts = [t["text"] for t in report.get("analysis_texts", []) if t.get("text")]
             h.analysis_text = "\n".join(texts)
             h.report_md = self._build_report_md(h, report)
+            h.experiment_reports = self._experiment_reports(report)
         return h
 
     def best_scores(self, project_id: str) -> List[Tuple[Hypothesis, float]]:

@@ -11,6 +11,11 @@ def get_project_dir(project_id: str) -> Path:
     return DATA_ROOT / "projects" / project_id
 
 
+def get_project_meta_path(project_id: str) -> Path:
+    """Return the path for the project meta YAML file (name, created_at)."""
+    return get_project_dir(project_id) / "meta.yml"
+
+
 def get_project_db_path(project_id: str) -> Path:
     """Return the SQLite DB file path for a project."""
     return get_project_dir(project_id) / "project.db"
@@ -32,8 +37,17 @@ def get_experiment_dir(project_id: str, hypothesis_id: str, exp_id: str) -> Path
 
 
 def get_experiment_yml_path(project_id: str, hypothesis_id: str, exp_id: str) -> Path:
-    """Return the exp_id.yml path (backend writes the hypothesis_id/exp_id skeleton; agent fills design/score)."""
+    """Return the canonical experiment YAML path."""
     return get_experiment_dir(project_id, hypothesis_id, exp_id) / f"{exp_id}.yml"
+
+
+def get_legacy_experiment_yml_path(
+    project_id: str,
+    hypothesis_id: str,
+    exp_id: str,
+) -> Path:
+    """Return the legacy fixed-name experiment YAML path."""
+    return get_experiment_dir(project_id, hypothesis_id, exp_id) / "exp_id.yml"
 
 
 def get_status_yml_path(project_id: str, hypothesis_id: str, exp_id: str) -> Path:
@@ -46,27 +60,34 @@ def get_experiments_dir(project_id: str, hypothesis_id: str) -> Path:
     return get_hypothesis_dir(project_id, hypothesis_id) / "experiments"
 
 
-def get_projects_root() -> Path:
-    """Return the root directory containing all project directories."""
-    return DATA_ROOT / "projects"
-
-
-def list_project_ids() -> list[str]:
-    """Return IDs of all initialised projects (dirs containing project.db), sorted."""
-    root = get_projects_root()
-    if not root.exists():
-        return []
-    return sorted(
-        p.name for p in root.iterdir() if p.is_dir() and (p / "project.db").exists()
-    )
-
-
 def get_reports_dir(project_id: str) -> Path:
     """Return the reports directory for a project."""
     return get_project_dir(project_id) / "reports"
+
+
+def get_project_data_file_path(project_id: str, role: str) -> Path:
+    """Return the single canonical file path for a project data role."""
+    filenames = {
+        "train": "train.csv",
+        "test": "test.csv",
+        "description": "data_description.txt",
+    }
+    try:
+        filename = filenames[role]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported data role: {role}") from exc
+    return get_project_dir(project_id) / filename
 
 
 def ensure_dir(path: Path) -> Path:
     """Create the directory (and parents) if it does not exist. Returns the path."""
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def list_project_ids() -> list[str]:
+    """Return project directory names in stable order."""
+    projects_dir = DATA_ROOT / "projects"
+    if not projects_dir.exists():
+        return []
+    return sorted(path.name for path in projects_dir.iterdir() if path.is_dir())

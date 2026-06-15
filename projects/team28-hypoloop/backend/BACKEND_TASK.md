@@ -128,35 +128,31 @@ parallel_count: <int>       # 병렬 횟수
 ready: false                # 트리거가 true로 변경
 ```
 
-### `exp_id.yml` (실험 설계 — **벡엔드와 에이전트(AI팀)가 생성**, 참고용)
-> 백엔드는 이 파일을 만든다. 아래는 에이전트가 만들 산출물 형태를
-> hypothesis_id, exp_id는 백엔드가 작업한다.
+### `exp_id.yml` (실험 설계 — **에이전트(AI팀)가 생성**, 참고용)
+> 백엔드는 이 파일을 **만들지 않는다.** 아래는 에이전트가 만들 산출물 형태를
+> 백엔드가 이해하기 위한 참고 스펙일 뿐이다. 백엔드는 이 파일을 읽기만 할 수 있다.
 ```yaml
-  hypothesis_id: string       # 부모 가설 ID **벡엔드가 생성**
-  exp_id: string              # 해당 실험 고유 ID **벡엔드가 생성** 
-  design:
-    experiment_text: string   # 가설 기반 실험 설계 요약 (예: "XGBoost가 더 잘될 것 같아 모델을 XGBoost로 변경하여 실험 진행")
-    model: string             # 구체적인 모델명 (예: "XGBoost")
-    features: list            # 사용할 피처 목록
-    hyperparameters: object   # 하이퍼파라미터 키-값
-    formula: string           # 평가 산식/수식 (필요 없거나 고정이면 제외 가능)
-  score: float | null         # 실험 점수 (초기 null, 에이전트가 최종 채움)
+hypothesis_id: <string>
+exp_id: <string>
+design:
+  features: []              # 피처
+  hyperparameters: {}       # 하이퍼파라미터
+  model: <string>           # 모델
+  formula: <string>         # 산식/수식
 ```
 
 ### `status.yml` (실험 상태/점수 — **파일로 관리**)
 > 실험이 진행되는 동안 계속 갱신되는 파일. DB 테이블 대신 이 파일로 상태를 추적한다.
-> 백엔드는 초기 골격(hypothesis_id: string, exp_id: string)을 만들고 나머지는 진행 중 점수·상태·분석은 에이전트가 갱신한다.
+> 백엔드는 초기 골격을 만들 수 있고(상태 `ready`), 진행 중 점수·상태·분석은 에이전트가 갱신한다.
 > 보고서 생성 시 백엔드는 이 파일을 읽어 집계한다.
 ```yaml
-hypothesis_id: string       # 구분자 백 
-exp_id: string              # 구분자 백 
-current_task: string        # 현재 진행 중인 작업 (예: "EDA 진행 중", "피처 엔지니어링 진행 중")에이전트 
-status: string              # 해당 작업의 상태 (ready / running / done / failed) 에이전트 
-last_updated: string        # 상태가 마지막으로 변경된 시간 에이전트 
-nalysis_text: string | null # 작업 관련 로그 또는 분석 코멘트 (필요시 사용) 에이전트
-
+hypothesis_id: <string>
+exp_id: <string>
+status: ready               # ready / running / done / failed
+score: null                 # 실험 점수 (초기 null, 에이전트가 채움)
+analysis_text: null         # 실험 결과 분석 텍스트 (에이전트가 채움)
+updated_at: <timestamp>     # 마지막 갱신 시각
 ```
-
 
 ---
 

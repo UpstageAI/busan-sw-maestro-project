@@ -17,19 +17,20 @@ def _render_running(h) -> None:
     ratio = min(done / total, 1.0)
     pct = int(ratio * 100)
 
+    # 1) 로그 콘솔(고정 높이)
     state = AgentActivityState()
     for ev in list(h.events):       # 백그라운드 스레드가 갱신 중 → 스냅샷으로 순회
         state.apply(ev)
-    if state.lines:
-        render_console(state)
+    render_console(state)
 
+    # 2) 로그 바로 아래: 진행률 바
+    st.progress(ratio, text=f"진행률 {pct}%  ·  실험 {done}/{total} 완료")
+
+    # 3) 최하단: 대시보드로
+    st.divider()
     if st.button("대시보드로", key="run_to_dash"):
         st.session_state.view = "dashboard"
         st.rerun()
-
-    # 하단: 진행도 바(완수율)
-    st.divider()
-    st.progress(ratio, text=f"진행률 {pct}%  ·  실험 {done}/{total} 완료")
 
 
 def _render_report(h) -> None:
@@ -45,8 +46,32 @@ def _render_report(h) -> None:
                            file_name=fname, mime="text/markdown",
                            use_container_width=True)
 
-    # 백엔드가 주는 보고서(.md) 미리보기: 목차 + 하단 스크롤 진행바
-    report_viewer.render(h.report_md or "")
+    # 보고서(.md) 미리보기: 목차 + 스크롤 진행바 + 경로의 img/ 이미지 병합
+    report_viewer.render(h.report_md or "",
+                         base_dir=getattr(h, "report_dir", ""))
+
+    details = getattr(h, "experiment_reports", [])
+    if details:
+        st.divider()
+        st.subheader("실험 상세 보고서")
+        st.caption("각 실험에서 생성한 report.md와 시각화 이미지입니다.")
+
+        for index, detail in enumerate(details, start=1):
+            score_text = f" · 점수 {detail.score}" if detail.score is not None else ""
+            label = f"실험 {index} · {detail.exp_id[:8]}{score_text}"
+            with st.expander(label, expanded=index == 1):
+                st.download_button(
+                    "상세 보고서 다운로드 (.md)",
+                    data=detail.report_md,
+                    file_name=f"experiment_{detail.exp_id[:8]}.md",
+                    mime="text/markdown",
+                    key=f"detail_download_{detail.exp_id}",
+                )
+                report_viewer.render(
+                    detail.report_md,
+                    height=720,
+                    base_dir=detail.report_dir,
+                )
 
     if st.button("대시보드로", key="report_to_dash"):
         st.session_state.view = "dashboard"

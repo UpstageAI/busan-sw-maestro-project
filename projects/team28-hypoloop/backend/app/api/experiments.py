@@ -14,19 +14,17 @@ def create_experiment(
     project_id: str,
 ) -> dict:
     """
-    Create an experiment directory and write the initial status.yml and exp_id.yml
-    skeletons (status=ready; exp_id.yml has only hypothesis_id/exp_id filled in —
-    the agent fills in design/score afterwards).
+    Create an experiment directory and write backend-owned YML skeletons.
     project_id is a required query parameter.
     """
     exp_id = str(uuid.uuid4())
     ensure_dir(get_experiment_dir(project_id, hypothesis_id, exp_id))
-    yml_generator.generate_status_yml(
+    yml_generator.generate_experiment_yml(
         project_id=project_id,
         hypothesis_id=hypothesis_id,
         exp_id=exp_id,
     )
-    yml_generator.generate_experiment_yml(
+    yml_generator.generate_status_yml(
         project_id=project_id,
         hypothesis_id=hypothesis_id,
         exp_id=exp_id,

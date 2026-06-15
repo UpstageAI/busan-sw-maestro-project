@@ -49,7 +49,7 @@ def generate_status_yml(
     """
     Write the initial status.yml for a new experiment (status=ready).
     This file tracks the agent's current task/progress for UI display only —
-    the final score and design live in exp_id.yml (agent-written).
+    the final score and design live in <exp_id>.yml (agent-written).
     Returns the path of the written file.
     """
     data = {
@@ -72,10 +72,8 @@ def generate_experiment_yml(
     exp_id: str,
 ) -> Path:
     """
-    Write the initial exp_id.yml skeleton for a new experiment.
-    Per BACKEND_TASK.md, the backend fills in only the identifiers
-    (hypothesis_id/exp_id); the agent later fills design/score in place.
-    Returns the path of the written file.
+    새로운 실험을 위한 초기 <exp_id>.yml 스켈레톤(뼈대) 파일을 생성합니다.
+    백엔드는 실험 ID 식별자만 채워넣고, 에이전트가 실험 종료 후 design과 score를 채워넣게 됩니다.
     """
     data = {
         "hypothesis_id": hypothesis_id,
@@ -85,7 +83,7 @@ def generate_experiment_yml(
             "model": None,
             "features": [],
             "hyperparameters": {},
-            # 데모 시연을 위해 평가 산식을 "R2 Score"로 고정합니다 (점수가 높을수록 직관적임).
+            # 데모 시연 및 에이전트 평가 통일성을 위해 평가 산식을 "R2 Score"로 고정 주입합니다.
             "formula": "R2 Score",
         },
         "score": None,
@@ -115,12 +113,13 @@ def read_status_yml(status_path: Path) -> dict:
 
 
 def read_experiment_yml(yml_path: Path) -> dict:
-    """Read and return the contents of an exp_id.yml file (skeleton from backend, design/score from agent)."""
+    """Read and return an agent-generated experiment YAML file."""
     with open(yml_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
 def _write_yml(path: Path, data: dict) -> None:
     """Overwrite a YML file with the given data dict."""
+    ensure_dir(path.parent)
     with open(path, "w", encoding="utf-8") as f:
         yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)

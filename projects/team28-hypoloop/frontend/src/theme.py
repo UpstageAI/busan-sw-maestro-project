@@ -43,7 +43,7 @@ div.stButton > button[kind="secondary"] {
   background:#fff; color:#1f2430; border:1px solid #e3e6ea; border-radius:10px; }
 .hl-phase { font-weight:600; color:#4f6bed; margin:4px 0 10px; }
 .hl-console { background:#f6f7f9; border:1px solid #e3e6ea; border-radius:12px;
-  padding:14px; max-height:460px; overflow-y:auto; }
+  padding:14px; height:420px; overflow-y:auto; }
 .hl-line { display:flex; gap:10px; padding:5px 0; border-bottom:1px solid #edf0f3; font-size:14px; }
 .hl-tag { flex:0 0 40px; color:#6b7280; font-size:12px; padding-top:2px; }
 .hl-txt { color:#3b4252; }
@@ -57,6 +57,27 @@ div.stButton > button[kind="secondary"] {
   letter-spacing:0.6px; margin-bottom:2px; }
 .hl-proj-name { font-size:20px; font-weight:700; color:#1f2430; margin-bottom:2px; }
 .hl-hyp-head { font-size:12px; color:#6b7280; font-weight:600; margin:6px 0 4px; }
+/* 설정 화면 상단 팝업 공지 — 위에서 내려왔다가 3초 후 다시 올라감 */
+.hl-toast-wrap { position:fixed; top:0; left:0; right:0; z-index:99999;
+  display:flex; justify-content:center; pointer-events:none; }
+.hl-toast2 { position:relative; top:-160px; opacity:0;
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  background:#ffffff; border:1.5px solid #4f6bed; color:#1f2430;
+  padding:13px 44px; border-radius:12px; box-shadow:0 8px 22px rgba(0,0,0,0.16);
+  font-size:1.05rem; font-weight:700; line-height:1.35; text-align:center;
+  white-space:nowrap; animation:hl-drop 2.3s ease-in-out forwards; }
+.hl-toast2 svg { flex:0 0 auto; }
+@keyframes hl-drop {
+  0%   { top:-160px; opacity:0; }   /* 화면 위(숨김) */
+  18%  { top:72px;   opacity:1; }   /* 내려옴(상단 툴바 아래로, ~0.4s) */
+  82%  { top:72px;   opacity:1; }   /* 약 1.5초 유지 */
+  100% { top:-160px; opacity:0; }   /* 다시 올라감(~0.4s) */
+}
+/* 랜딩(프로젝트 선택) 페이지 — 상하/좌우 중앙 */
+.hl-home { display:flex; flex-direction:column; justify-content:center;
+  align-items:center; text-align:center; color:#6b7280; min-height:74vh; }
+.hl-home .t { font-size:2rem; font-weight:700; color:#1f2430; margin-bottom:10px; }
+.hl-home .s { font-size:0.95rem; }
 
 /* ===== 사이드바 간격: 프로젝트끼리는 기본(넓게), 프로젝트-가설은 촘촘하게 ===== */
 /* 가설 묶음 내부(가설들 + 새 가설)만 촘촘하게 */
@@ -65,16 +86,31 @@ section[data-testid="stSidebar"] div[class*="st-key-hypbox_"] [data-testid="stHo
 /* 가설 묶음을 프로젝트 버튼 바로 아래로 붙여 같은 그룹처럼 보이게 */
 section[data-testid="stSidebar"] div[class*="st-key-hypbox_"] { margin-top:-0.55rem; }
 
-/* ===== 사이드바 트리 버튼 (st-key 접두사로 구분) ===== */
-/* 프로젝트: 크게 + 파란 배경 + 흰 글씨 */
-section[data-testid="stSidebar"] div[class*="st-key-proj_"] button {
-  background:#4f6bed !important; color:#fff !important; border:none !important;
-  border-radius:10px; padding:0.72rem 0.9rem;
-  box-shadow:0 1px 2px rgba(79,107,237,0.25); }
-section[data-testid="stSidebar"] div[class*="st-key-proj_"] button:hover {
-  background:#3f59d6 !important; color:#fff !important; }
-section[data-testid="stSidebar"] div[class*="st-key-proj_"] button p {
+/* ===== 사이드바 프로젝트 버튼: 공통 크기 + 상태별 색 ===== */
+section[data-testid="stSidebar"] div[class*="st-key-projready_"] button,
+section[data-testid="stSidebar"] div[class*="st-key-projwarn_"] button,
+section[data-testid="stSidebar"] div[class*="st-key-projcfg_"] button {
+  border:none !important; border-radius:10px; padding:0.72rem 0.9rem;
+  box-shadow:0 1px 2px rgba(0,0,0,0.08); }
+section[data-testid="stSidebar"] div[class*="st-key-projready_"] button p,
+section[data-testid="stSidebar"] div[class*="st-key-projwarn_"] button p,
+section[data-testid="stSidebar"] div[class*="st-key-projcfg_"] button p {
   font-size:1.02rem !important; font-weight:700 !important; }
+/* 준비 완료 = 파랑 */
+section[data-testid="stSidebar"] div[class*="st-key-projready_"] button {
+  background:#4f6bed !important; color:#fff !important; }
+section[data-testid="stSidebar"] div[class*="st-key-projready_"] button:hover {
+  background:#3f59d6 !important; color:#fff !important; }
+/* 미완료 = 주황 */
+section[data-testid="stSidebar"] div[class*="st-key-projwarn_"] button {
+  background:#e0922e !important; color:#fff !important; }
+section[data-testid="stSidebar"] div[class*="st-key-projwarn_"] button:hover {
+  background:#cf831f !important; color:#fff !important; }
+/* 설정 중 = 회색 */
+section[data-testid="stSidebar"] div[class*="st-key-projcfg_"] button {
+  background:#c4c9d2 !important; color:#3b4252 !important; }
+section[data-testid="stSidebar"] div[class*="st-key-projcfg_"] button:hover {
+  background:#b6bcc7 !important; color:#3b4252 !important; }
 
 /* 가설: 흰색, 좌측 정렬, 한 줄(...), 우측에 상태 점 자리 */
 section[data-testid="stSidebar"] div[class*="st-key-hyp_"] button {
@@ -98,28 +134,35 @@ section[data-testid="stSidebar"] div[class*="st-key-hyp_"] button p {
 section[data-testid="stSidebar"] div[class*="st-key-hypbox_"] {
   animation: hl-slidedown 0.24s ease-out; }
 
-/* 행 hover 시 우상단 X(삭제) 노출 */
+/* ===== 우상단 원형 X 삭제: 행 hover 시 노출, X에 hover 시 빨강 ===== */
 section[data-testid="stSidebar"] div[class*="st-key-prow_"],
 section[data-testid="stSidebar"] div[class*="st-key-hrow_"] { position:relative; }
 section[data-testid="stSidebar"] div[class*="st-key-pdel_"],
 section[data-testid="stSidebar"] div[class*="st-key-hdel_"] {
-  position:absolute; top:3px; right:4px; width:auto !important;
-  opacity:0; transition:opacity .15s ease; z-index:6; }
+  position:absolute; top:-7px; right:-7px; width:auto !important; z-index:7;
+  opacity:0; transition:opacity .15s ease; }
 section[data-testid="stSidebar"] div[class*="st-key-prow_"]:hover div[class*="st-key-pdel_"],
 section[data-testid="stSidebar"] div[class*="st-key-hrow_"]:hover div[class*="st-key-hdel_"] {
   opacity:1; }
+/* 원 안의 X */
 section[data-testid="stSidebar"] div[class*="st-key-pdel_"] button,
 section[data-testid="stSidebar"] div[class*="st-key-hdel_"] button {
-  background:transparent !important; border:none !important; box-shadow:none !important;
-  padding:0 5px !important; min-height:0 !important; height:1.3rem; line-height:1;
-  font-size:0.95rem; border-radius:6px; }
-section[data-testid="stSidebar"] div[class*="st-key-pdel_"] button p {
-  color:#ffffff !important; font-weight:700 !important; }
+  width:22px !important; height:22px !important; min-height:0 !important;
+  padding:0 !important; border-radius:50% !important;
+  background:#ffffff !important; border:1px solid #d7dbe2 !important;
+  box-shadow:0 1px 3px rgba(0,0,0,0.18) !important;
+  display:flex; align-items:center; justify-content:center; }
+section[data-testid="stSidebar"] div[class*="st-key-pdel_"] button p,
 section[data-testid="stSidebar"] div[class*="st-key-hdel_"] button p {
-  color:#9aa1ad !important; font-weight:700 !important; }
+  color:#8a909c !important; font-weight:700 !important; font-size:0.78rem !important;
+  line-height:1 !important; }
+/* X에 hover 시 빨강 */
+section[data-testid="stSidebar"] div[class*="st-key-pdel_"] button:hover,
+section[data-testid="stSidebar"] div[class*="st-key-hdel_"] button:hover {
+  background:#d64545 !important; border-color:#d64545 !important; }
 section[data-testid="stSidebar"] div[class*="st-key-pdel_"] button:hover p,
 section[data-testid="stSidebar"] div[class*="st-key-hdel_"] button:hover p {
-  color:#d64545 !important; }
+  color:#ffffff !important; }
 
 /* 추가 버튼(새 가설/새 프로젝트): 파스텔 연파랑 */
 section[data-testid="stSidebar"] div[class*="st-key-newhyp_"] button,

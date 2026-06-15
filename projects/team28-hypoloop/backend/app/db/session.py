@@ -23,6 +23,10 @@ def get_engine(project_id: str) -> Engine:
 def get_db(project_id: str) -> Generator[Session, None, None]:
     """FastAPI dependency: yield a DB session for the given project."""
     engine = get_engine(project_id)
+    from app.db.models import Base
+
+    # Repository samples and older projects may predate the current schema.
+    Base.metadata.create_all(bind=engine)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db = SessionLocal()
     try:
@@ -31,15 +35,15 @@ def get_db(project_id: str) -> Generator[Session, None, None]:
         db.close()
 
 
-def remove_engine(project_id: str) -> None:
-    """Dispose and forget the cached engine for a project (call before deleting its files)."""
-    engine = _engines.pop(project_id, None)
-    if engine is not None:
-        engine.dispose()
-
-
 def init_db(project_id: str) -> None:
     """Create all tables in the project DB if they do not already exist."""
     from app.db.models import Base  # deferred to avoid circular import
 
     Base.metadata.create_all(bind=get_engine(project_id))
+
+
+def remove_engine(project_id: str) -> None:
+    """Dispose and remove a cached project engine before deleting its files."""
+    engine = _engines.pop(project_id, None)
+    if engine is not None:
+        engine.dispose()

@@ -17,7 +17,7 @@ def render(store: HypoStore, project_id: str) -> None:
 
     with st.form("hyp_form"):
         content = st.text_area("가설 내용", height=120,
-                               placeholder="예) 객실 등급(Pclass)이 생존에 큰 영향을 준다.")
+                               placeholder="예) 전체 품질(OverallQual)이 주택 가격에 큰 영향을 준다.")
         col1, col2 = st.columns(2)
         max_experiments = col1.number_input("최대 실험 횟수", min_value=1,
                                              max_value=20, value=3, step=1)

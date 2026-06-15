@@ -15,6 +15,15 @@ IGNORE_DIRS = {
 MAX_DEPTH = 5
 MAX_ENTRIES = 200
 MAX_MATCHES = 100
+MAX_TOOL_OUTPUT_CHARS = 12_000
+
+
+def _truncate_output(content: str, *, limit: int = MAX_TOOL_OUTPUT_CHARS) -> str:
+    """Bound tool observations so one file or command cannot exhaust LLM context."""
+    if len(content) <= limit:
+        return content
+    omitted = len(content) - limit
+    return content[:limit] + f"\n... [truncated {omitted} characters]"
 
 
 def _resolve_safe(path: str) -> Path:
@@ -23,6 +32,25 @@ def _resolve_safe(path: str) -> Path:
     # Path.is_relative_to 는 3.9+; requires-python >=3.10 이라 안전
     if not target.is_relative_to(PROJECT_ROOT):
         raise ValueError(f"경로가 프로젝트 루트를 벗어났습니다: {path}")
+    return target
+
+
+def _resolve_read_path(file_path: str) -> Path:
+    """Resolve read paths and recover repository-shared template references."""
+    requested_path = Path(file_path)
+    target = requested_path.resolve() if requested_path.is_absolute() else _resolve_safe(file_path)
+    if target.exists():
+        return target
+
+    parts = requested_path.parts
+    try:
+        shared_index = parts.index("shared")
+    except ValueError:
+        return target
+
+    shared_target = (PROJECT_ROOT / Path(*parts[shared_index:])).resolve()
+    if shared_target.is_relative_to(PROJECT_ROOT):
+        return shared_target
     return target
 
 
@@ -129,10 +157,17 @@ def search_code(pattern: str, path: str) -> str:
 
 @tool
 def read_file(file_path: str) -> str:
-    """소스 코드 내용 확인"""
+    """Read a project file using an absolute path or repository-root relative path."""
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            return f.read()
+        target = _resolve_read_path(file_path)
+        if target.suffix.lower() == ".csv":
+            return (
+                "CSV files are not returned through read_file because they may exceed "
+                "the model context. Use execute_command with a short pandas summary "
+                "such as columns, shape, dtypes, missing counts, or head()."
+            )
+        with target.open("r", encoding="utf-8") as f:
+            return _truncate_output(f.read())
     except Exception as e:
         return f"Error reading file {file_path}: {str(e)}"
 
@@ -143,8 +178,28 @@ def write_file(file_path: str, content: str) -> str:
     try:
         os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
 
+        # Some tool-calling models occasionally return an entire Python file with
+        # escaped line separators instead of real newlines. Normalize only that
+        # unmistakable one-line case so ordinary string literals stay untouched.
+        if file_path.endswith(".py") and "\n" not in content and "\\n" in content:
+            content = content.replace("\\r\\n", "\n").replace("\\n", "\n")
+
+        syntax_error = None
+        if file_path.endswith(".py"):
+            try:
+                compile(content, file_path, "exec")
+            except SyntaxError:
+                repaired = content.replace('\\"', '"').replace("\\'", "'")
+                try:
+                    compile(repaired, file_path, "exec")
+                    content = repaired
+                except SyntaxError as exc:
+                    syntax_error = f"line {exc.lineno}: {exc.msg}"
+
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
+        if syntax_error:
+            return f"Wrote {file_path}, but Python syntax is invalid ({syntax_error})"
         return f"Successfully wrote to {file_path}"
     except Exception as e:
         return f"Error writing file {file_path}: {str(e)}"
@@ -168,7 +223,7 @@ def execute_command(command: str) -> str:
         if result.stderr:
             output += f"Stderr:\n{result.stderr}\n"
 
-        return output
+        return _truncate_output(output)
     except Exception as e:
         return f"Error executing command: {str(e)}"
 
@@ -181,10 +236,40 @@ def update_status(exp_dir: str, current_task: str, status: str, analysis_text: s
     실험이 완료되어 평가 점수(예: R2 Score)가 나왔다면 score 파라미터도 함께 전달하세요."""
     import yaml
     from datetime import datetime
-    
+
     status_path = os.path.join(exp_dir, "status.yml")
-    
+
     try:
+        if status == "done":
+            required_artifacts = ("eda.py", "train.py", "report.md")
+            missing = [
+                name for name in required_artifacts
+                if not os.path.isfile(os.path.join(exp_dir, name))
+            ]
+            exp_id = os.path.basename(os.path.normpath(exp_dir))
+            canonical_yml_path = os.path.join(exp_dir, f"{exp_id}.yml")
+            legacy_yml_path = os.path.join(exp_dir, "exp_id.yml")
+            exp_yml_path = (
+                canonical_yml_path
+                if os.path.exists(canonical_yml_path)
+                else legacy_yml_path
+            )
+            existing_score = None
+            if os.path.exists(exp_yml_path):
+                try:
+                    with open(exp_yml_path, "r", encoding="utf-8") as f:
+                        existing_score = (yaml.safe_load(f) or {}).get("score")
+                except Exception:
+                    pass
+            final_score = score if score is not None else existing_score
+            if missing or not isinstance(final_score, (int, float)):
+                details = []
+                if missing:
+                    details.append("missing artifacts: " + ", ".join(missing))
+                if not isinstance(final_score, (int, float)):
+                    details.append("numeric score is missing")
+                return "Cannot set status to done: " + "; ".join(details)
+
         data = {}
         if os.path.exists(status_path):
             try:
@@ -192,21 +277,27 @@ def update_status(exp_dir: str, current_task: str, status: str, analysis_text: s
                     data = yaml.safe_load(f) or {}
             except Exception:
                 pass
-                
+
         data["current_task"] = current_task
         data["status"] = status
         data["last_updated"] = datetime.now().isoformat()
         if analysis_text is not None:
             data["analysis_text"] = analysis_text
-            
+
         with open(status_path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True)
-            
-        # If score is provided, also update {exp_id}.yml
+
+        # If score is provided, also update the backend-created experiment YML.
         if score is not None:
             exp_id = os.path.basename(os.path.normpath(exp_dir))
-            exp_yml_path = os.path.join(exp_dir, f"{exp_id}.yml")
-            
+            canonical_yml_path = os.path.join(exp_dir, f"{exp_id}.yml")
+            legacy_yml_path = os.path.join(exp_dir, "exp_id.yml")
+            exp_yml_path = (
+                canonical_yml_path
+                if os.path.exists(canonical_yml_path)
+                else legacy_yml_path
+            )
+
             exp_data = {}
             if os.path.exists(exp_yml_path):
                 try:
@@ -217,7 +308,7 @@ def update_status(exp_dir: str, current_task: str, status: str, analysis_text: s
             exp_data["score"] = float(score)
             with open(exp_yml_path, "w", encoding="utf-8") as f:
                 yaml.dump(exp_data, f, allow_unicode=True)
-            
+
         return f"Status successfully updated to: {status} ({current_task})"
     except Exception as e:
         return f"Error updating status: {str(e)}"

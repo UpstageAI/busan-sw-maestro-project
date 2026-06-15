@@ -3,6 +3,12 @@
 에이전트는 코드를 생성하고 파일을 저장할 때 반드시 아래의 절대 규칙을 따라야 합니다.
 
 ## 1. Directory Structure Constraints (경로 규칙)
+프로젝트 입력 데이터는 프로젝트 디렉터리에 아래 고정 파일명으로 저장됩니다:
+- 학습 데이터: `data/projects/{project_id}/train.csv`
+- 테스트 데이터: `data/projects/{project_id}/test.csv`
+- 데이터 설명: `data/projects/{project_id}/data_description.txt`
+- 백엔드 메타데이터: `data/projects/{project_id}/project.db` (에이전트 학습 입력으로 사용 금지)
+
 모든 작업은 주어진 실험(Experiment) 디렉터리 하위에서만 이루어져야 합니다.
 **기본 경로 형식**: `data/projects/{project_id}/hypotheses/{hypothesis_id}/experiments/{exp_id}/`
 
@@ -14,6 +20,5 @@
 
 ## 2. Authorization Constraints (권한 및 보안 규칙)
 1. **프로젝트 외부 접근 금지**: 에이전트는 프로젝트 상위 디렉터리나 관계없는 시스템 경로에 대해 파일 쓰기/수정/삭제를 수행해서는 안 됩니다.
-2. **SQLite 데이터베이스 읽기 전용(Read-Only)**: `project.db` 파일에 접근할 때는 절대로 데이터를 덮어쓰거나 수정해서는 안 됩니다. **반드시 파이썬의 `sqlite3` 연결 시 `mode=ro` 속성과 `uri=True` 옵션을 사용**하여 읽기 권한만 갖도록 코드를 작성하십시오.
-   - ✅ 올바른 예: `sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)`
-   - ❌ 잘못된 예: `sqlite3.connect(db_path)` (DB 데이터 손상 위험 발생)
+2. **CSV 직접 로딩**: EDA와 학습 데이터는 `train.csv`, `test.csv`를 `pandas.read_csv`로 직접 읽습니다. SQL을 생성하거나 `project.db`를 모델 데이터 소스로 사용하지 마십시오.
+3. **백엔드 DB 접근 금지**: `project.db`는 프로젝트와 데이터 카드 등의 백엔드 메타데이터 전용입니다. 에이전트 코드는 이 파일을 읽거나 수정하지 않습니다.

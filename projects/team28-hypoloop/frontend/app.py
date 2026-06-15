@@ -10,17 +10,21 @@ from src.api.backend import BackendStore
 from src.api.mock import MockStore
 from src import theme
 from src.components import sidebar
-from src.pages import dashboard, hypothesis_register, report
+from src.pages import (dashboard, hypothesis_register, report, project_setup,
+                       home)
 
 
 def get_store():
-    """store 주입 지점. 세션에 1개 보관.
-
-    HYPOLOOP_STORE=mock 이면 MockStore(데모 시뮬레이션), 그 외에는
-    실제 백엔드(FastAPI)와 통신하는 BackendStore를 사용한다.
-    """
-    if "store" not in st.session_state:
-        if os.getenv("HYPOLOOP_STORE", "backend") == "mock":
+    """Use the real backend by default; opt into the mock with HYPOLOOP_STORE."""
+    use_mock = os.getenv("HYPOLOOP_STORE", "backend").lower() == "mock"
+    current = st.session_state.get("store")
+    needs_replacement = current is None or (
+        use_mock and not isinstance(current, MockStore)
+    ) or (
+        not use_mock and not isinstance(current, BackendStore)
+    )
+    if needs_replacement:
+        if use_mock:
             st.session_state.store = MockStore()
         else:
             st.session_state.store = BackendStore()
@@ -53,24 +57,31 @@ def main() -> None:
     theme.page_setup()
 
     if "view" not in st.session_state:
-        st.session_state.view = "dashboard"
+        st.session_state.view = "home"
         st.session_state.selected_hypothesis = None
 
     store = get_store()
-    # 기본 선택 프로젝트(첫 프로젝트). 프로젝트가 없으면 None.
-    if not st.session_state.get("selected_project"):
-        projects = store.list_projects()
-        st.session_state.selected_project = (
-            projects[0].project_id if projects else None)
 
     sidebar.render(store)
 
-    project_id = st.session_state.selected_project
-    if project_id is None:
-        st.info("왼쪽에서 새 프로젝트를 추가해 시작하세요.")
+    view = st.session_state.view
+
+    # 새 프로젝트 설정 화면(학습/실험 데이터 + 설명 업로드)
+    if view == "project_setup" and st.session_state.get("setup_project"):
+        project_setup.render(store, st.session_state.setup_project)
+        if _any_running(store):
+            _heartbeat()
         return
 
-    view = st.session_state.view
+    project_id = st.session_state.get("selected_project")
+
+    # 랜딩(프로젝트 선택) 화면
+    if view == "home" or project_id is None:
+        home.render(store)
+        if _any_running(store):
+            _heartbeat()
+        return
+
     if view == "register":
         hypothesis_register.render(store, project_id)
     elif view == "report":

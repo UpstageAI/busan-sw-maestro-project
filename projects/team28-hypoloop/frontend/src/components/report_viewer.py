@@ -7,6 +7,10 @@
 """
 from __future__ import annotations
 
+import base64 as _b64
+import os as _os
+import re as _re
+
 import markdown as _md
 import streamlit.components.v1 as components
 
@@ -33,6 +37,9 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--body);
 .content h2{font-size:1.2rem;margin-top:1.4em;}
 .content h3{font-size:1.03rem;}
 .content p,.content li{font-size:0.95rem;line-height:1.7;}
+.content img{display:block;max-width:100%;height:auto;margin:12px auto;
+     border:1px solid var(--line);border-radius:8px;
+     box-shadow:0 2px 8px rgba(0,0,0,0.06);}
 .content blockquote{margin:.6em 0;padding:.4em 1em;border-left:3px solid var(--accent);
      background:var(--soft);color:var(--ink);border-radius:0 8px 8px 0;}
 .content code{background:var(--soft);padding:1px 5px;border-radius:5px;
@@ -92,13 +99,56 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--body);
 </body></html>"""
 
 
+_IMG_RE = _re.compile(r'!\[([^\]]*)\]\(\s*([^)\s]+)\s*\)')
+_EXT_MIME = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+             "gif": "image/gif", "svg": "image/svg+xml", "webp": "image/webp"}
+
+
+def _data_uri(path: str, raw: bytes) -> str:
+    ext = path.rsplit(".", 1)[-1].lower() if "." in path else "png"
+    mime = _EXT_MIME.get(ext, "image/png")
+    return f"data:{mime};base64,{_b64.b64encode(raw).decode('ascii')}"
+
+
+def inline_images(md_text: str, base_dir: str) -> str:
+    """보고서 md의 상대경로 이미지(![](img/x.png))를 디스크에서 읽어 base64로 치환.
+
+    에이전트/백엔드가 base_dir(보고서 디렉토리)에 report.md와 img/ 를 저장하므로,
+    프론트가 base_dir 기준으로 이미지를 읽어 병합한다. iframe(srcdoc) 안에서는
+    상대경로가 풀리지 않기 때문이다. http(s)/data URI는 그대로 둔다.
+    """
+    if not base_dir or not _os.path.isdir(base_dir):
+        return md_text
+    base = _os.path.realpath(base_dir)
+
+    def repl(m):
+        alt, src = m.group(1), m.group(2).strip()
+        if src.startswith(("http://", "https://", "data:")):
+            return m.group(0)
+        target = _os.path.realpath(_os.path.join(base, src))
+        # 경로 이탈(traversal) 방지: base_dir 밖이면 무시
+        if target != base and not target.startswith(base + _os.sep):
+            return m.group(0)
+        if not _os.path.isfile(target):
+            return m.group(0)
+        try:
+            with open(target, "rb") as f:
+                raw = f.read()
+        except OSError:
+            return m.group(0)
+        return f"![{alt}]({_data_uri(src, raw)})"
+
+    return _IMG_RE.sub(repl, md_text)
+
+
 def md_to_html(md_text: str) -> str:
     """마크다운 텍스트를 HTML로 변환(헤딩 id 부여)."""
     return _md.markdown(md_text or "", extensions=["extra", "toc", "sane_lists"])
 
 
-def render(md_text: str, height: int = 620) -> None:
-    """보고서 미리보기(목차 + 스크롤 진행바)를 렌더한다."""
-    body = md_to_html(md_text or "# 보고서\n\n내용이 없습니다.")
+def render(md_text: str, height: int = 620, base_dir: str = "") -> None:
+    """보고서 미리보기(목차 + 스크롤 진행바). base_dir: report.md/img가 있는 경로."""
+    md_text = inline_images(md_text or "# 보고서\n\n내용이 없습니다.", base_dir)
+    body = md_to_html(md_text)
     doc = _TEMPLATE.replace("__BODY__", body)
     components.html(doc, height=height, scrolling=False)
