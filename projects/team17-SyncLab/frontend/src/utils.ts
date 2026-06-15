@@ -35,7 +35,7 @@ export function routeDescription(route?: RouteType) {
 }
 
 export function riskClass(riskLevel: string) {
-  if (riskLevel === "높음") return "bg-red-50 text-danger ring-red-100";
-  if (riskLevel === "보통") return "bg-orange-50 text-warning ring-orange-100";
-  return "bg-green-50 text-success ring-green-100";
+  if (riskLevel === "높음") return "bg-red-100 text-red-700 ring-red-200";
+  if (riskLevel === "보통") return "bg-amber-100 text-amber-800 ring-amber-200";
+  return "bg-emerald-100 text-emerald-700 ring-emerald-200";
 }

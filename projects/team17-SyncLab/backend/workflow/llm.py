@@ -8,7 +8,7 @@ def get_llm() -> ChatUpstage:
     if _llm is None:
         _llm = ChatUpstage(
             model="solar-pro3-260323",
-            temperature=0.0,
+            temperature=0.1,
             top_p=0.1,
         )
     return _llm
