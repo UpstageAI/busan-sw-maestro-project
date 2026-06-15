@@ -802,6 +802,11 @@ textarea {
   font-weight: 800;
 }
 
+.article-keywords .issue-badge {
+  background: #eef2ff;
+  color: #3538cd;
+}
+
 .article-detail {
   border-top: 1px solid var(--line);
   padding-top: 10px;

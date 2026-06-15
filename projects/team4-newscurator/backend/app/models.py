@@ -48,6 +48,9 @@ class Article(BaseModel):
     priority_label: str | None = None
     priority_reason: str | None = None
     matched_keywords: list[str] = Field(default_factory=list)
+    selection_reason: str | None = None
+    issue_group: str | None = None
+    agent_selected: bool = False
 
 
 class BriefingStats(BaseModel):
@@ -55,7 +58,9 @@ class BriefingStats(BaseModel):
     collected_count: int = 0
     matched_count: int = 0
     deduped_count: int = 0
+    candidate_count: int = 0
     selected_count: int = 0
+    selector_used: bool = False
     attempted_feed_count: int = 0
     failed_feed_count: int = 0
 

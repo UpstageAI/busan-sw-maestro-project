@@ -415,7 +415,9 @@ function renderStats(stats) {
     ["수집", stats.collected_count],
     ["매칭", stats.matched_count],
     ["중복 제거 후", stats.deduped_count],
-    ["요약", stats.selected_count],
+    ["LLM 후보", stats.candidate_count ?? stats.selected_count],
+    ["최종 선택", stats.selected_count],
+    ["선별", stats.selector_used ? "LLM" : "룰"],
     ["언론사", stats.source_count],
     ["실패 RSS", stats.failed_feed_count],
   ];
@@ -490,6 +492,12 @@ function articleCard(article) {
     badge.textContent = keyword;
     keywords.append(badge);
   });
+  if (article.issue_group) {
+    const badge = document.createElement("span");
+    badge.className = "issue-badge";
+    badge.textContent = article.issue_group;
+    keywords.append(badge);
+  }
 
   const summary = document.createElement("p");
   summary.className = "article-summary";
@@ -502,6 +510,14 @@ function articleCard(article) {
   const whyText = document.createElement("p");
   whyText.textContent = article.why_it_matters || "선택한 관심 조건과 관련된 최신 흐름을 파악하는 데 도움이 됩니다.";
   why.append(whySummary, whyText);
+
+  const selection = document.createElement("details");
+  selection.className = "article-detail";
+  const selectionSummary = document.createElement("summary");
+  selectionSummary.textContent = "에이전트 선별";
+  const selectionText = document.createElement("p");
+  selectionText.textContent = article.selection_reason || "";
+  selection.append(selectionSummary, selectionText);
 
   const reason = document.createElement("details");
   reason.className = "article-detail";
@@ -526,7 +542,9 @@ function articleCard(article) {
 
   card.append(topline, title);
   if (keywords.children.length) card.append(keywords);
-  card.append(summary, why, reason, link);
+  card.append(summary, why);
+  if (article.selection_reason) card.append(selection);
+  card.append(reason, link);
   return card;
 }
 
