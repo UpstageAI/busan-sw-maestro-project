@@ -29,6 +29,16 @@ INFRA_GAP_CONTEXT = {
     "source_fields": ["concerns", "constraints", "tech_stack"],
 }
 
+GAME_GAP_CONTEXT = {
+    "main_gap": "Game Development, Game Design 영역의 게임 프로토타입 설계 역량 부족",
+    "gap_categories": ["Game Development", "Game Design", "Live Ops"],
+    "needed_mentor_expertise": ["게임 프로토타입 설계", "게임 시스템 기획"],
+    "priority": "medium",
+    "reason": "RPG 게임 방향을 구체화할 필요가 있습니다.",
+    "query_hints": ["RPG", "game design", "Unity"],
+    "source_fields": ["project_summary", "user_goal"],
+}
+
 
 class Bm25RetrieverTest(unittest.TestCase):
     def test_rag_langgraph_gap_retrieves_ai_llm_mentor_first(self):
@@ -59,6 +69,18 @@ class Bm25RetrieverTest(unittest.TestCase):
 
     def test_empty_mentor_data_returns_empty_candidates(self):
         self.assertEqual(retrieve_bm25_rule_candidates(RAG_GAP_CONTEXT, []), [])
+
+    def test_game_gap_retrieves_game_mentors(self):
+        candidates = retrieve_bm25_rule_candidates(
+            GAME_GAP_CONTEXT,
+            load_mentors(),
+            limit=3,
+        )
+
+        self.assertGreaterEqual(len(candidates), 2)
+        self.assertTrue(
+            {"배준혁", "신예린"}.issubset({candidate["name"] for candidate in candidates})
+        )
 
 
 if __name__ == "__main__":

@@ -477,7 +477,7 @@
               </table></div>
               <h4>인터랙션</h4>
               <div class="state-row"><span class="st">resubmit</span><span>같은 <code>session_id</code> + <code>clarify_answer</code> 첨부해 <code>POST /recommend</code> 재호출 → <code>viewState=LOADING</code></span></div>
-              <div class="state-row"><span class="st">1회 제한</span><span>확인 질문 라운드는 1회로 가정(기획서). 2회째 need_clarification이 와도 답변 후 결과로 진행하도록 방어 처리</span></div>
+              <div class="state-row"><span class="st">최대 2회</span><span>질문은 한 화면에 1개씩 노출. 후속 <code>need_clarification</code> 응답도 같은 S-03 화면에서 처리하며, 백엔드는 최대 2회 후 누적 입력으로 분석 진행</span></div>
               <div class="state-row"><span class="st">back</span><span>[처음으로]는 입력 초기화 후 S-01 복귀(세션 폐기)</span></div>
             </div>
           </div>

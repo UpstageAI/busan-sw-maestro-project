@@ -1,10 +1,12 @@
 import unittest
 
 from backend.app.nodes.input_parser import (
+    MAX_CLARIFICATION,
     parse_input,
     _check_sufficiency_rule_based,
     _merge_clarify_answer,
 )
+from backend.app.llm.schemas import ClarificationAssessment
 
 PARSED_INPUT_FIELDS = frozenset({
     "project_summary",
@@ -126,8 +128,8 @@ class TestParseInput(unittest.TestCase):
         result = parse_input(state)
         assert result["parsed_input"]["current_stage"] == "미정"
 
-    def test_clarify_answer_skips_sufficiency_check(self):
-        """clarify_answer가 있으면 원본 입력이 짧아도 parsed_input을 생성한다."""
+    def test_clarify_answer_passes_when_merged_input_is_sufficient(self):
+        """추가 답변을 병합한 입력이 충분하면 parsed_input을 생성한다."""
         state = {
             "user_input": "앱 만들어요",
             "tech_stack": [],
@@ -161,3 +163,87 @@ class TestParseInput(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FakeClarificationSolar:
+    is_configured = True
+
+    def __init__(self, assessment):
+        self.assessment = assessment
+
+    def complete_json(self, **kwargs):
+        return ClarificationAssessment(**self.assessment)
+
+
+def test_clarify_answer_is_rejected_when_solar_requests_more_detail(monkeypatch):
+    fake = FakeClarificationSolar(
+        {
+            "is_sufficient": False,
+            "question": "현재 가장 막힌 기술 문제는 무엇인가요?",
+            "options": ["배포", "데이터베이스"],
+        }
+    )
+    monkeypatch.setattr(
+        "backend.app.nodes.input_parser.SolarChatClient.from_env",
+        lambda: fake,
+    )
+
+    result = parse_input(
+        {
+            "user_input": "앱 만들어요",
+            "tech_stack": [],
+            "stage": "",
+            "clarify_answer": "잘 모르겠어요",
+        }
+    )
+
+    assert result["is_input_sufficient"] is False
+    assert result["parsed_input"] == {}
+    assert result["clarification_question"] == "현재 가장 막힌 기술 문제는 무엇인가요?"
+    assert result["clarification_count"] == 1
+
+
+def test_clarify_answer_falls_back_to_rule_check_when_solar_fails(monkeypatch):
+    class FailingSolar:
+        is_configured = True
+
+        def complete_json(self, **kwargs):
+            raise OSError("temporary failure")
+
+    monkeypatch.setattr(
+        "backend.app.nodes.input_parser.SolarChatClient.from_env",
+        lambda: FailingSolar(),
+    )
+
+    result = parse_input(
+        {
+            "user_input": "앱 만들어요",
+            "tech_stack": [],
+            "stage": "",
+            "clarify_answer": "아직 잘 모르겠습니다",
+        }
+    )
+
+    assert result["is_input_sufficient"] is False
+
+
+def test_max_clarification_forces_progress_without_calling_solar(monkeypatch):
+    monkeypatch.setattr(
+        "backend.app.nodes.input_parser.SolarChatClient.from_env",
+        lambda: (_ for _ in ()).throw(AssertionError("Solar should not be called")),
+    )
+
+    result = parse_input(
+        {
+            "user_input": "뭘 잘하는지 모르겠어요\n추가 정보: 게임을 만들고 싶어요",
+            "tech_stack": [],
+            "stage": "",
+            "clarify_answer": "RPG 게임",
+            "clarification_count": MAX_CLARIFICATION,
+        }
+    )
+
+    assert result["is_input_sufficient"] is True
+    assert result["clarification_question"] == ""
+    assert result["parsed_input"]
+    assert "RPG 게임" in result["user_input"]

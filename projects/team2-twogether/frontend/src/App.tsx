@@ -39,8 +39,7 @@ function App() {
     try {
       const res = await rec.submit(input);
       if (res.status === 'need_clarification') {
-        // 확인 질문 라운드는 1회 가정. 2회째가 와도 답변 후 결과로 진행하도록 방어
-        // (mock 은 clarify_answer 가 있으면 항상 추천을 반환).
+        // 백엔드는 최대 2회의 확인 질문을 반환할 수 있으므로 매 status를 그대로 따른다.
         setClarify({ question: res.question, options: res.options });
         setView('CLARIFY');
       } else if (res.mentors.length === 0) {

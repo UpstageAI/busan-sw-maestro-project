@@ -6,6 +6,7 @@ class GraphState(TypedDict, total=False):
     tech_stack: list[str]
     stage: str
     clarify_answer: str
+    clarification_count: int
 
     parsed_input: dict[str, Any]
     is_input_sufficient: bool

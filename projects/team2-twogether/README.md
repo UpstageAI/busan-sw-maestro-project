@@ -7,27 +7,25 @@
 ## 주요 기능
 
 - 자유 텍스트에서 기술 스택, 진행 단계, 고민과 목표 구조화
-- 입력 충분성 판단 및 확인 질문 1개 생성
+- 입력 충분성 판단 및 최대 2회의 확인 질문 생성
 - 프로젝트의 핵심 약점과 필요한 멘토 전문성 분석
 - BM25 규칙 검색을 기본으로 한 멘토 후보 검색
 - 선택적 Vector 및 Hybrid 검색 지원
 - 후보별 적합도, 추천 이유와 도움 가능 영역 생성
+- 검색된 후보의 구체 사용자 의도 일치도를 Solar로 제한적 재순위화
 - 저신뢰 추천에 대한 질의 보정 및 최대 1회 재검색
 - 추천 근거가 제한적인 경우 `limited` 결과 제공
 - 확인 질문 왕복을 위한 인메모리 세션
 
 ## 아키텍처
 
-```mermaid
-flowchart LR
-    U["사용자"] --> F["React + Vite"]
-    F -->|"POST /recommend"| A["FastAPI"]
-    A --> G["LangGraph Workflow"]
-    G --> D["합성 멘토 데이터"]
-    G -. "선택적 Vector / Hybrid 검색" .-> V["Upstage Embedding + Qdrant"]
-    G --> A
-    A --> F
-```
+![SWM 멘토 매칭 에이전트 아키텍처](docs/assets/architecture.svg)
+
+실선은 기본 호출 경로, 점선은 환경 설정에 따라 사용하는 선택 호출 경로입니다.
+
+Solar는 별도의 LangGraph 노드가 아닙니다. `Input Parser`, `Interview Gap`,
+`Fit Evaluation` 내부에서 선택적으로 호출되며, 호출 실패 시 각 노드의 기존 규칙 기반
+결과로 폴백합니다.
 
 | 영역 | 역할 | 기술 |
 |---|---|---|
@@ -35,9 +33,10 @@ flowchart LR
 | API | 요청 검증, 세션 관리, 워크플로우 실행 | FastAPI, Pydantic |
 | Agent Workflow | 상태 관리, 조건 분기, 재검색 제어 | LangGraph |
 | Retrieval | 멘토 후보 검색 | BM25 규칙 검색, 선택적 Upstage/Qdrant |
+| LLM 보강 | 확인 답변 판정, 약점 보정, 후보 의도 재순위화 | Upstage Solar |
 | Data | 합성 멘토 프로필 | JSON |
 
-기본 검색 모드는 `bm25`이며 외부 API 키 없이 동작합니다. `vector` 또는 `hybrid` 모드는 Upstage API와 Qdrant 설정이 있을 때 사용할 수 있고, 벡터 검색 실패 시 BM25로 폴백합니다.
+기본 검색 모드는 `bm25`입니다. Upstage API 키가 있으면 Solar가 확인 답변의 충분성, 규칙 기반 약점 분석, 검색 후보의 구체 사용자 의도 일치도를 보강합니다. 키가 없거나 호출에 실패하면 기존 규칙 기반 흐름과 점수를 그대로 사용합니다. `vector` 또는 `hybrid` 모드는 Upstage API와 Qdrant 설정이 있을 때 사용할 수 있고, 벡터 검색 실패 시 BM25로 폴백합니다.
 
 ## 에이전트 플로우
 
@@ -45,18 +44,18 @@ flowchart LR
 flowchart TD
     U["POST /recommend"] --> I["FastAPI: 요청을 GraphState로 변환"]
     I --> S["LangGraph START"]
-    S --> P["Input Parser<br/>입력 구조화 / 추가 답변 병합"]
+    S --> P["Input Parser<br/>규칙 기반 입력 구조화<br/>Solar: 확인 답변 충분성 보강"]
     P --> C{"입력이 충분한가?"}
     C -->|"아니오"| Q["Clarification: 확인 질문 생성"]
     Q --> E1["LangGraph END"]
-    E1 --> N["need_clarification 응답<br/>원본 입력 세션 유지"]
+    E1 --> N["need_clarification 응답<br/>누적 입력·질문 횟수 유지"]
     N --> A["사용자 추가 답변"]
     A --> U2["동일 session_id로<br/>POST /recommend 재요청"]
-    U2 --> M["FastAPI: session_id로<br/>원본 입력 복원"]
+    U2 --> M["FastAPI: session_id로<br/>누적 입력 복원"]
     M --> S
-    C -->|"예"| G["Interview Gap"]
+    C -->|"예"| G["Interview Gap<br/>규칙 기반 약점 분석<br/>Solar: 구체 요구·검색 힌트 보정"]
     G --> R["Mentor Retrieval"]
-    R --> F["Fit Evaluation"]
+    R --> F["Fit Evaluation<br/>규칙 기반 적합도<br/>Solar: 사용자 의도 재순위화"]
     F --> D{"추천 신뢰도가 충분한가?"}
     D -->|"예"| B["Result Builder"]
     D -->|"아니오, 재시도 가능"| X["Query Refiner"]
@@ -66,18 +65,21 @@ flowchart TD
     E2 --> O["recommended / limited 응답<br/>세션 정리"]
 ```
 
+다이어그램의 Solar 표기는 각 LangGraph 노드 내부에서 수행되는 선택적 보강 호출입니다.
+Solar 응답이 없거나 검증에 실패해도 그래프 배선은 바뀌지 않고 규칙 기반 경로로 완주합니다.
+
 | 단계 | 처리 내용 |
 |---|---|
-| FastAPI Request Handling | 요청을 GraphState로 변환합니다. 확인 질문 후속 요청이면 `session_id`로 보관한 원본 입력을 복원합니다. |
-| Input Parser | 원본 입력과 `clarify_answer`를 병합하고, 입력을 구조화해 추천에 필요한 정보가 충분한지 판단합니다. |
-| Clarification | 입력이 부족하면 확인 질문 1개를 생성하고 현재 LangGraph 실행을 종료합니다. |
-| Interview Gap | 프로젝트 상황에서 부족한 역량, 우선순위와 검색 힌트를 도출합니다. |
+| FastAPI Request Handling | 요청을 GraphState로 변환합니다. 확인 질문 후속 요청이면 `session_id`로 보관한 누적 입력과 질문 횟수를 복원합니다. |
+| Input Parser | 누적 입력과 `clarify_answer`를 병합하고 충분성을 재판정합니다. 확인 질문은 최대 2회이며 이후 누적 정보로 진행합니다. |
+| Clarification | 한 번에 확인 질문 1개를 생성하고 현재 LangGraph 실행을 종료합니다. |
+| Interview Gap | 규칙 기반 약점을 만든 뒤 Solar가 구체 사용자 요구와 검색 힌트를 보존하도록 보정합니다. |
 | Mentor Retrieval | 약점 기반 검색 질의를 구성해 멘토 후보를 검색합니다. |
-| Fit Evaluation | 검색 점수와 규칙 일치도를 결합해 적합도와 추천 이유를 생성합니다. |
+| Fit Evaluation | 기존 검색·규칙 점수를 계산한 뒤 Solar 의도 일치도를 제한적으로 혼합해 후보를 재순위화합니다. |
 | Query Refiner | 추천 근거가 약하면 검색 질의를 보정하고 최대 1회 재검색합니다. |
 | Result Builder | 상위 3명의 멘토를 프론트엔드 응답 계약에 맞춰 반환합니다. |
 
-확인 질문 응답은 하나의 LangGraph 실행 안에서 반복되지 않습니다. `need_clarification` 응답 후 프론트엔드가 동일한 `session_id`로 새 요청을 보내면, FastAPI가 저장된 원본 입력을 복원하고 Input Parser가 `clarify_answer`를 병합해 처리를 이어갑니다.
+확인 질문 응답은 하나의 LangGraph 실행 안에서 반복되지 않습니다. `need_clarification` 응답 후 프론트엔드가 동일한 `session_id`로 새 요청을 보내면, FastAPI가 저장된 누적 입력과 질문 횟수를 복원하고 Input Parser가 `clarify_answer`를 병합해 처리를 이어갑니다. 확인 질문은 최대 2회이며, 이후에는 누적된 정보로 분석을 진행합니다.
 
 추천 이유는 멘토 프로필과 약점 분석에 존재하는 정보만 조합해 생성하며, 프로필에 없는 경력이나 전문성을 임의로 추가하지 않습니다.
 
@@ -85,8 +87,8 @@ flowchart TD
 
 1. 사용자가 프로젝트 설명, 기술 스택과 진행 단계를 입력합니다.
 2. 프론트엔드는 단일 엔드포인트 `POST /recommend`로 요청을 전송합니다.
-3. 입력이 부족하면 `need_clarification` 응답을 반환하고 원본 입력을 세션에 보관합니다.
-4. 사용자의 추가 답변을 원본 입력과 병합해 워크플로우를 다시 실행합니다.
+3. 입력이 부족하면 `need_clarification` 응답을 반환하고 누적 입력과 질문 횟수를 세션에 보관합니다.
+4. 사용자의 추가 답변을 누적 입력과 병합해 워크플로우를 다시 실행합니다. 최대 2회 질문 후에는 현재 정보로 진행합니다.
 5. 입력이 충분하면 프로젝트 약점을 분석하고 멘토 후보를 검색·평가합니다.
 6. 추천 신뢰도가 낮으면 질의를 보정해 최대 1회 재검색합니다.
 7. 최종 응답은 `recommended` 또는 `limited` 상태와 추천 멘토 카드로 반환됩니다.
@@ -107,6 +109,7 @@ flowchart TD
 ├── backend/
 │   └── app/
 │       ├── graph/       # LangGraph 상태와 워크플로우
+│       ├── llm/         # Solar Chat 클라이언트와 구조화 응답 스키마
 │       ├── nodes/       # 입력 파싱, 약점 분석, 검색, 평가, 결과 생성
 │       ├── rag/         # BM25, Upstage Embedding, Qdrant 연동
 │       ├── schemas/     # API 요청·응답 및 약점 분석 스키마
@@ -148,8 +151,9 @@ npm run lint
 
 현재 구현은 로컬에서 실행 가능한 Agentic Workflow 데모를 목표로 합니다.
 
-- 멘토 데이터는 10명의 합성 프로필을 사용합니다.
-- 기본 경로는 LLM을 호출하지 않는 규칙 기반 분석과 BM25 검색입니다.
+- 멘토 데이터는 기술, 기획, 창업, 성장 영역을 포함한 20명의 합성 프로필을 사용합니다.
+- 기본 분석과 검색 전략은 규칙 기반 및 BM25이며, Solar가 확인 답변 판정, 약점 분석, 후보 의도 일치도를 선택적으로 보강합니다.
+- 적합도 점수는 절대 평가가 아니라 현재 요청 안에서 후보 간 상대적 적합도를 나타냅니다.
 - 세션은 확인 질문 왕복을 위한 인메모리 저장소이며 서버 재시작 시 사라집니다.
 - 실제 멘토 데이터 연동, 사용자 인증, 장기 메모리, 멘토 연락과 매칭 확정은 포함하지 않습니다.
 
@@ -164,3 +168,4 @@ npm run lint
 | [프론트엔드 README](frontend/README.md) | 프론트엔드 실행과 화면 구조 |
 | [프론트엔드 설계 원칙](frontend/AGENT.md) | UI 및 API 계약 규칙 |
 | [프론트엔드 디자인 명세](frontend/Design.md) | 화면과 디자인 시스템 |
+| [Solar 품질 고도화 보고서](docs/reports/phase3-solar-quality.md) | Solar 보강, 확인 질문 제한, 멘토 풀 확장과 재순위화 |

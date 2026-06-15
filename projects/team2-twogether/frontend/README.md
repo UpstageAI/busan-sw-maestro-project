@@ -22,7 +22,7 @@ npm run lint       # eslint
 
 ## Mock 모드
 
-백엔드 완성 전까지 `.env`의 `VITE_USE_MOCK=true`(기본값)로 mock 응답을 사용합니다.
+백엔드 없이 프론트 화면만 확인할 때 `.env`의 `VITE_USE_MOCK=true`(기본값)로 mock 응답을 사용합니다.
 실서버 연동 시 `VITE_USE_MOCK=false` + `VITE_API_BASE=http://localhost:8000`.
 
 입력 텍스트의 키워드로 데모 시나리오가 분기됩니다(`src/mocks/recommend.ts`):
@@ -70,4 +70,6 @@ src/
 ## 가드레일 (AGENT.md §7)
 
 추천 이유(`reason`)·약점(`gaps`)·`notice`는 백엔드 텍스트를 **그대로 표시만** 합니다(환각 방지).
-"멘토링 신청·연락" 버튼은 두지 않습니다(MVP 외부 실행 제외). 확인 질문은 항상 1개.
+"멘토링 신청·연락" 버튼은 두지 않습니다(MVP 외부 실행 제외). 확인 질문은 한 화면에 항상
+1개만 표시하며, 실서버는 최대 2회의 확인 질문을 반환할 수 있습니다. 적합도는 현재 요청 안에서의
+상대적 추천 점수입니다.

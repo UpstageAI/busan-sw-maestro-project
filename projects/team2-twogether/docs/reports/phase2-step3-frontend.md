@@ -2,6 +2,10 @@
 
 > 담당: donghakk (통합 오너) · 브랜치: `feat/integration` · 병합 커밋: `c853686`
 
+> **현재 상태 참고:** 이 문서는 Phase 2 당시 완료 기록입니다. 현재 백엔드는 최대 2회의
+> 확인 질문과 Solar 기반 후보 재순위화를 지원합니다. 프론트는 매 응답의 `status`를 따라
+> 여러 번의 `need_clarification`도 같은 S-03 화면으로 처리합니다.
+
 ## 한 줄 요약
 프론트 MVP(`feat/frontend-mvp`)를 `feat/integration`에 **병합**하고, 목 데이터 대신
 **실 FastAPI 서버에 연결**해 입력→추천 흐름을 end-to-end로 검증했습니다.
@@ -38,7 +42,7 @@ npm run dev          # http://localhost:5173
 - **프론트 프로덕션 빌드 통과**(`npm run build`, `tsc -b`) → api.ts 계약과 **타입 정합 확인**.
 - **CORS preflight(OPTIONS) 통과** — `access-control-allow-origin: http://localhost:5173`.
 - **실 cross-origin POST** (Origin 헤더 포함) → `recommended` + 멘토 3명 정상 반환.
-- 백엔드 전체 테스트 90개 통과 유지.
+- **Phase 2 당시** 백엔드 전체 테스트 90개 통과 유지.
 
 > 참고: 위는 HTTP 레벨(빌드+CORS+실응답) 검증입니다. 브라우저 UI 렌더링 최종 확인은
 > 프론트 담당이 `npm run dev`로 한 번 더 눈으로 봐주시면 좋습니다.
@@ -48,7 +52,7 @@ npm run dev          # http://localhost:5173
   dev 서버 안정성을 위해 **Node 20.19+ 또는 22.12+ 권장**.
 - `frontend/.env`는 gitignore 대상(로컬 전용). 커밋된 기본값(`.env.example`)은 `VITE_USE_MOCK=true`
   이므로, 각자 로컬에서 실연동 시 `.env`를 위처럼 설정하세요.
-- limited/retry 상태는 1단계 보고서 참고 — 규칙 기반 모드에선 자연 도달하지 않습니다.
+- limited/retry 상태는 후보 부족 또는 Solar 의도 재순위화 이후의 저신뢰 점수에서 발생할 수 있습니다.
 
 ## 🔧 해결됨 — 로딩 화면(S-02) 가시화 (브랜치 `feat/web-ui-progress`)
 **실서버 모드에서 로딩 화면(S-02, StepProgress)이 보이지 않던 이슈 해결.**
