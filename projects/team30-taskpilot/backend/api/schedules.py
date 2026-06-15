@@ -1,23 +1,26 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Literal, Optional
 from uuid import UUID
 
+from sqlalchemy import delete
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from backend.core.auth import get_current_user_id
 from pydantic import BaseModel, Field
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.schedule_agent.graph import create_graph
 from app.schedule_agent.schemas import StreamEvent
-from backend.db.models import Schedule, Task
+from backend.db.models import Schedule, Task, User
 from backend.db.session import AsyncSessionLocal, get_session
 
 router = APIRouter(tags=["schedules"])
 graph = create_graph()
 
 STREAM_NODE_NAMES = {"pre_validate", "classification", "ask_context", "plan", "post_validate", "output", "fallback"}
+VALIDATION_CONTEXT_LOOKAROUND_HOURS = 12
 
 
 # ── 요청/응답 모델 ──────────────────────────────────────────────
@@ -116,22 +119,27 @@ def parse_datetime(value: str) -> Optional[datetime]:
             return None
 
 
-async def get_overlapping_schedules(
+async def get_validation_context_schedules(
     session: AsyncSession,
     start_time: str,
     end_time: str,
     exclude_schedule_id: UUID | None = None,
+    user_id: UUID | None = None,
 ) -> list[dict]:
-    """저장된 ok 상태 일정 중 시간이 겹치는 것만 반환한다."""
+    """시간 충돌과 위치 이동 검증에 필요한 주변 ok 상태 일정을 반환한다."""
     start_at = parse_datetime(start_time)
     end_at = parse_datetime(end_time)
     if not start_at or not end_at:
         return []
+    window_start = start_at - timedelta(hours=VALIDATION_CONTEXT_LOOKAROUND_HOURS)
+    window_end = end_at + timedelta(hours=VALIDATION_CONTEXT_LOOKAROUND_HOURS)
     stmt = select(Schedule).where(
         Schedule.status == "ok",
-        Schedule.start_time < end_at,
-        Schedule.end_time > start_at,
-    )
+        Schedule.start_time < window_end,
+        Schedule.end_time > window_start,
+    ).order_by(Schedule.start_time)
+    if user_id is not None:
+        stmt = stmt.where(Schedule.user_id == user_id)
     if exclude_schedule_id is not None:
         stmt = stmt.where(Schedule.id != exclude_schedule_id)
     results = await session.exec(stmt)
@@ -144,6 +152,36 @@ async def get_overlapping_schedules(
         }
         for s in results.all()
     ]
+
+
+async def get_overlapping_schedules(
+    session: AsyncSession,
+    start_time: str,
+    end_time: str,
+    exclude_schedule_id: UUID | None = None,
+    user_id: UUID | None = None,
+) -> list[dict]:
+    """이전 이름과의 호환을 위해 검증용 관련 일정을 반환한다."""
+    return await get_validation_context_schedules(
+        session,
+        start_time,
+        end_time,
+        exclude_schedule_id=exclude_schedule_id,
+        user_id=user_id,
+    )
+
+
+async def ensure_user_exists(session: AsyncSession, user_id: UUID) -> None:
+    user = await session.get(User, user_id)
+    if user:
+        return
+
+    session.add(User(
+        id=user_id,
+        email=f"{user_id}@taskpilot.local",
+        name="",
+    ))
+    await session.commit()
 
 
 def build_agent_state(req: CreateScheduleRequest, existing_schedules: list[dict]) -> dict:
@@ -177,10 +215,11 @@ def build_agent_state(req: CreateScheduleRequest, existing_schedules: list[dict]
     }
 
 
-async def save_result(result: dict, req: CreateScheduleRequest) -> Schedule:
+async def save_result(result: dict, req: CreateScheduleRequest, user_id: Optional[UUID] = None) -> Schedule:
     """에이전트 결과를 DB에 저장하고 Schedule 인스턴스를 반환한다."""
     async with AsyncSessionLocal() as session:
         schedule = Schedule(
+            user_id=user_id,
             title=result.get("title") or req.title or "",
             detail=req.detail,
             location=result.get("location") or req.location,
@@ -302,9 +341,13 @@ data: {"event": "done", "node": "", "data": "{...}"}
 """,
     responses={200: {"description": "SSE 스트림", "content": {"text/event-stream": {}}}},
 )
-async def create_schedule_stream(req: CreateScheduleRequest):
+async def create_schedule_stream(
+    req: CreateScheduleRequest,
+    user_id: UUID = Depends(get_current_user_id),
+):
     async with AsyncSessionLocal() as session:
-        existing = await get_overlapping_schedules(session, req.start_time, req.end_time)
+        await ensure_user_exists(session, user_id)
+        existing = await get_validation_context_schedules(session, req.start_time, req.end_time, user_id=user_id)
 
     initial_state = build_agent_state(req, existing)
 
@@ -324,7 +367,7 @@ async def create_schedule_stream(req: CreateScheduleRequest):
             elif mode == "values":
                 final_state = chunk
 
-        saved = await save_result(final_state, req)
+        saved = await save_result(final_state, req, user_id)
         done_data = {
             "schedule_id": str(saved.id),
             "status": final_state.get("status", "fallback"),
@@ -350,8 +393,15 @@ async def create_schedule_stream(req: CreateScheduleRequest):
     summary="일정 목록 조회",
     description="저장된 모든 일정을 최신순으로 반환합니다. 각 일정에 서브태스크 목록이 포함됩니다.",
 )
-async def list_schedules(session: AsyncSession = Depends(get_session)):
-    results = await session.exec(select(Schedule).order_by(Schedule.created_at.desc()))
+async def list_schedules(
+    session: AsyncSession = Depends(get_session),
+    user_id: UUID = Depends(get_current_user_id),
+):
+    results = await session.exec(
+        select(Schedule)
+        .where(Schedule.user_id == user_id)
+        .order_by(Schedule.created_at.desc())
+    )
     schedules = results.all()
     response = []
     for s in schedules:
@@ -367,9 +417,13 @@ async def list_schedules(session: AsyncSession = Depends(get_session)):
     description="일정 UUID로 상세 정보와 서브태스크 목록을 반환합니다.",
     responses={404: {"description": "일정을 찾을 수 없음"}},
 )
-async def get_schedule(schedule_id: UUID, session: AsyncSession = Depends(get_session)):
+async def get_schedule(
+    schedule_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    user_id: UUID = Depends(get_current_user_id),
+):
     schedule = await session.get(Schedule, schedule_id)
-    if not schedule:
+    if not schedule or schedule.user_id != user_id:
         raise HTTPException(status_code=404, detail="일정을 찾을 수 없습니다.")
     task_results = await session.exec(select(Task).where(Task.schedule_id == schedule_id))
     return to_schedule_response(schedule, task_results.all())
@@ -386,9 +440,10 @@ async def update_schedule(
     schedule_id: UUID,
     req: UpdateScheduleRequest,
     session: AsyncSession = Depends(get_session),
+    user_id: UUID = Depends(get_current_user_id),
 ):
     schedule = await session.get(Schedule, schedule_id)
-    if not schedule:
+    if not schedule or schedule.user_id != user_id:
         raise HTTPException(status_code=404, detail="일정을 찾을 수 없습니다.")
     if req.title is not None:
         schedule.title = req.title
@@ -410,13 +465,16 @@ async def update_schedule(
     description="일정과 연결된 모든 서브태스크를 삭제합니다.",
     responses={404: {"description": "일정을 찾을 수 없음"}},
 )
-async def delete_schedule(schedule_id: UUID, session: AsyncSession = Depends(get_session)):
+async def delete_schedule(
+    schedule_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    user_id: UUID = Depends(get_current_user_id),
+):
     schedule = await session.get(Schedule, schedule_id)
-    if not schedule:
+    if not schedule or schedule.user_id != user_id:
         raise HTTPException(status_code=404, detail="일정을 찾을 수 없습니다.")
-    task_results = await session.exec(select(Task).where(Task.schedule_id == schedule_id))
-    for task in task_results.all():
-        await session.delete(task)
+    await session.exec(delete(Task).where(Task.schedule_id == schedule_id))
+    await session.flush()
     await session.delete(schedule)
     await session.commit()
 
@@ -433,7 +491,11 @@ async def update_task(
     task_id: UUID,
     req: UpdateTaskRequest,
     session: AsyncSession = Depends(get_session),
+    user_id: UUID = Depends(get_current_user_id),
 ):
+    schedule = await session.get(Schedule, schedule_id)
+    if not schedule or schedule.user_id != user_id:
+        raise HTTPException(status_code=404, detail="일정을 찾을 수 없습니다.")
     task = await session.get(Task, task_id)
     if not task or task.schedule_id != schedule_id:
         raise HTTPException(status_code=404, detail="태스크를 찾을 수 없습니다.")
@@ -469,7 +531,11 @@ async def delete_task(
     schedule_id: UUID,
     task_id: UUID,
     session: AsyncSession = Depends(get_session),
+    user_id: UUID = Depends(get_current_user_id),
 ):
+    schedule = await session.get(Schedule, schedule_id)
+    if not schedule or schedule.user_id != user_id:
+        raise HTTPException(status_code=404, detail="일정을 찾을 수 없습니다.")
     task = await session.get(Task, task_id)
     if not task or task.schedule_id != schedule_id:
         raise HTTPException(status_code=404, detail="태스크를 찾을 수 없습니다.")
@@ -496,16 +562,18 @@ async def regenerate_schedule_stream(
     schedule_id: UUID,
     req: RegenerateScheduleRequest = RegenerateScheduleRequest(),
     session: AsyncSession = Depends(get_session),
+    user_id: UUID = Depends(get_current_user_id),
 ):
     schedule = await session.get(Schedule, schedule_id)
-    if not schedule:
+    if not schedule or schedule.user_id != user_id:
         raise HTTPException(status_code=404, detail="일정을 찾을 수 없습니다.")
 
-    existing = await get_overlapping_schedules(
+    existing = await get_validation_context_schedules(
         session,
         schedule.start_time.isoformat() if schedule.start_time else "",
         schedule.end_time.isoformat() if schedule.end_time else "",
         exclude_schedule_id=schedule_id,
+        user_id=user_id,
     )
     create_req = CreateScheduleRequest(
         title=schedule.title,

@@ -30,6 +30,24 @@ QUESTION_PLACEHOLDER_KEYWORDS = (
     "empty string",
     "default value",
 )
+AMBIGUOUS_SCHEDULE_TEXTS = {
+    "todo",
+    "task",
+    "기타",
+    "무언가",
+    "뭔가",
+    "뭔가 하기",
+    "업무",
+    "일",
+    "일정",
+    "작업",
+    "준비",
+    "정리",
+    "처리",
+    "할 일",
+    "할일",
+    "확인",
+}
 
 
 def parse_iso_datetime(value: str) -> datetime | None:
@@ -122,6 +140,48 @@ def has_meaningful_question(question: str) -> bool:
     )
 
 
+def normalize_text(value: str) -> str:
+    """문장 내 연속 공백을 줄여 모호성 판단용 문자열을 만든다."""
+    return " ".join(value.strip().lower().split())
+
+
+def has_ambiguous_schedule_context(title: str, detail_with_context: str) -> bool:
+    """입력만으로 목적이나 완료 기준을 알기 어려운 일정인지 판단한다."""
+    normalized_title = normalize_text(title)
+    normalized_detail = normalize_text(detail_with_context)
+    combined = normalize_text(f"{title} {detail_with_context}")
+
+    if not combined:
+        return True
+    if len(combined) < 8:
+        return True
+    if normalized_title in AMBIGUOUS_SCHEDULE_TEXTS and not normalized_detail:
+        return True
+    if normalized_title in AMBIGUOUS_SCHEDULE_TEXTS and normalized_detail in AMBIGUOUS_SCHEDULE_TEXTS:
+        return True
+    return False
+
+
+def build_missing_invalid_reason(
+    title: str,
+    detail_with_context: str,
+    location: str,
+    start_at: datetime | None,
+    end_at: datetime | None,
+    travel_context: list[dict],
+) -> str:
+    """모델이 invalid 사유를 비워 둔 경우 사용자가 수정할 수 있는 사유를 보강한다."""
+    if not start_at or not end_at:
+        return "일정 시작 시간 또는 종료 시간 표현을 해석할 수 없습니다."
+    if travel_context:
+        return "일정 사이 위치 이동 시간이 부족할 가능성이 있습니다. 장소 도착이 필수인지, 온라인 또는 이동 중 수행이 가능한지 상세에 적어 주세요."
+    if has_ambiguous_schedule_context(title, detail_with_context):
+        return "일정 제목 또는 상세가 너무 추상적입니다. 무엇을 완료해야 하는지 알 수 있도록 목적, 산출물, 완료 기준을 구체적으로 적어 주세요."
+    if location.strip():
+        return "일정의 목적과 완료 기준이 명확하지 않습니다. 해당 장소에서 무엇을 완료해야 하는지 상세에 구체적으로 적어 주세요."
+    return "일정의 목적과 완료 기준이 명확하지 않습니다. 무엇을 완료해야 하는지 상세에 구체적으로 적어 주세요."
+
+
 def pre_validate_schedule(state: AgentState, *, strict: bool = False) -> dict:
     """일정 자체의 유효성과 시작/종료 시간 해석 가능 여부를 검증한다.
 
@@ -210,14 +270,14 @@ def pre_validate_schedule(state: AgentState, *, strict: bool = False) -> dict:
             result_dict["needs_question"] = True
             result_dict["is_valid"] = False
             result_dict["invalid_reason"] = ""
-            if not has_meaningful_question(result_dict["question"]):
+            if not has_meaningful_question(result_dict.get("question", "")):
                 result_dict["question"] = (
                     "이 작업은 해당 장소에 도착해야만 가능한가요, "
                     "아니면 이동 중이나 온라인으로도 가능한가요?"
                 )
-        elif result_dict["needs_question"]:
-            result_dict["needs_question"] = False
-            result_dict["question"] = ""
+        elif result_dict.get("needs_question"):
+            if not has_meaningful_question(result_dict.get("question", "")):
+                result_dict["question"] = "이 일정에서 무엇을 완료해야 하는지, 목적과 완료 기준을 구체적으로 알려주세요."
 
         if result_dict["needs_question"]:
             if state.get("pre_validation_retry", 0) >= state.get("max_retry", 2):
@@ -233,13 +293,22 @@ def pre_validate_schedule(state: AgentState, *, strict: bool = False) -> dict:
             result_dict["question_source"] = "pre_validate"
             result_dict["invalid_reason"] = ""
             return result_dict
-        if not result_dict["is_valid"] and not result_dict["invalid_reason"].strip():
-            if not start_at or not end_at:
-                result_dict["invalid_reason"] = "일정 시간 표현을 해석할 수 없습니다."
-            elif travel_context:
-                result_dict["invalid_reason"] = "일정 위치 간 이동 가능성을 충족하지 못했습니다."
-            else:
-                result_dict["invalid_reason"] = "일정의 목적 또는 실행 조건이 유효성 검증 기준을 충족하지 못했습니다."
+        if not result_dict["is_valid"] and not result_dict["needs_question"] and not result_dict["invalid_reason"].strip():
+            # LLM이 이유 없이 invalid 반환 → fallback 대신 질문으로 전환
+            if state.get("pre_validation_retry", 0) < state.get("max_retry", 2):
+                result_dict["needs_question"] = True
+                result_dict["question_source"] = "pre_validate"
+                result_dict["question"] = "이 일정에서 무엇을 완료해야 하는지, 목적과 완료 기준을 구체적으로 알려주세요."
+                result_dict["invalid_reason"] = ""
+                return result_dict
+            result_dict["invalid_reason"] = build_missing_invalid_reason(
+                title,
+                detail_with_context,
+                location,
+                start_at,
+                end_at,
+                travel_context,
+            )
         result_dict["question_source"] = ""
         return result_dict
     except Exception as e:

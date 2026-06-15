@@ -25,19 +25,29 @@ Accepted
 
 **existing_schedules 주입 방식**
 - 기존 프로토타입에서 클라이언트가 `existing_schedules`를 직접 넘기던 방식을 제거한다.
-- 서버가 DB에서 `start_time`/`end_time` 겹치는 `status=ok` 일정만 조회해 에이전트에 주입한다.
+- 서버가 DB에서 `start_time`/`end_time` 기준으로 충돌하거나 요청 전후 위치 이동 검증에 필요한 `status=ok` 일정을 조회해 에이전트에 주입한다.
 
 **SSE 저장 타이밍**
 - `done` 이벤트 전에 DB 저장을 완료한다.
 - 클라이언트는 `done` 이벤트에서 `schedule_id`를 받아 즉시 상세 조회(`GET /schedules/{id}`) 가능.
 
+**인증: Supabase Auth + Google OAuth**
+- 프론트엔드에서 Supabase Auth로 Google OAuth 로그인 후 JWT 발급.
+- 백엔드는 JWT를 `PyJWT` + JWKS(`/auth/v1/.well-known/jwks.json`)로 검증한다.
+- HS256/RS256/ES256을 지원하며, Supabase 키 교체 시 자동으로 갱신된다.
+- JWT의 `sub` 클레임을 `user_id`로 사용해 일정 데이터를 사용자별로 격리한다.
+- `SUPABASE_JWT_SECRET`(HS256 직접 검증) 방식 대신 JWKS 방식을 채택해 키 관리 부담을 없앤다.
+- 일정 생성 시 `users` row가 아직 없으면 `sub` 기반 placeholder 사용자 row를 생성해 `schedules.user_id` 외래키를 만족시킨다.
+
 **배포**
-- FastAPI: Railway
+- FastAPI: Railway (`railway.toml` + `Dockerfile.api`)
 - PostgreSQL: Supabase (Session pooler, `postgresql+asyncpg://`)
+- 프론트엔드: Vercel (별도 배포)
 
 ## Consequences
 - 에이전트와 API 레이어의 책임이 명확히 분리된다.
 - `backend`에서 `app/schedule_agent`를 임포트하므로 Docker 이미지에 두 패키지 모두 포함해야 한다.
-- `existing_schedules` 클라이언트 입력이 제거되어 API 계약이 단순해진다.
+- `existing_schedules` 클라이언트 입력이 제거되어 API 계약이 단순해지고, 시간 충돌과 위치 이동 가능성을 같은 검증 컨텍스트에서 판단할 수 있다.
 - Supabase Session pooler 사용 시 `asyncpg`는 `postgresql+asyncpg://` 연결 문자열을 사용한다.
-- 인증 도입 시 `user_id` 컬럼 활성화 외 스키마 변경이 최소화된다.
+- JWKS 방식으로 JWT 검증하므로 Railway 환경변수에 `SUPABASE_URL`만 추가하면 된다.
+- 모든 일정 엔드포인트는 `user_id` 기반으로 데이터를 격리하므로 다른 사용자의 데이터에 접근할 수 없다.
