@@ -884,13 +884,13 @@
 }
 
 .mp-markdown h4 {
-  font-size: 0.95rem;
-  font-weight: 600;
-  margin-top: 1rem;
+  font-size: 1rem;
+  font-weight: 700;
+  margin-top: 1.2rem;
   margin-bottom: 0.4rem;
-  color: #444748;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  color: #1c1b1b;
+  padding-left: 0.6rem;
+  border-left: 3px solid #bbb8b7;
 }
 
 .mp-markdown p {

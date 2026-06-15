@@ -34,6 +34,8 @@ function MainPage() {
   const [chatMessages, setChatMessages] = useState(CHAT_INIT);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  // 이전 세션 채팅 이력 — 리셋 후에도 남아 다음 빌드에 주입됨
+  const [prevChatHistory, setPrevChatHistory] = useState([]);
 
   /* Allow scrolling on this page (index.css disables it globally) */
   useEffect(() => {
@@ -97,8 +99,9 @@ function MainPage() {
       setProgress2(prog);
     }, 25);
 
+    console.log('[build] prevChatHistory:', prevChatHistory);
     try {
-      const response = await api.build({ studyTarget, level, studyWeeks, ...answers });
+      const response = await api.build({ studyTarget, level, studyWeeks, ...answers, chatHistory: prevChatHistory });
       setCurriculumMarkdown(response.data.curriculum ?? response.data);
       clearInterval(tick);
       setProgress2(100);
@@ -116,10 +119,14 @@ function MainPage() {
     if (!chatInput.trim() || chatLoading) return;
     const userMsg = chatInput.trim();
     setChatInput('');
+    // 세션 내 선호 학습: 직전까지의 사용자 수정 요청을 누적 선호로 함께 전달
+    const editHistory = chatMessages
+      .filter(m => m.role === 'user')
+      .map(m => m.text);
     setChatMessages(prev => [...prev, { role: 'user', text: userMsg }]);
     setChatLoading(true);
     try {
-      const response = await api.chat({ message: userMsg, curriculum: curriculumMarkdown });
+      const response = await api.chat({ message: userMsg, curriculum: curriculumMarkdown, editHistory });
       setCurriculumMarkdown(response.data.curriculum);
       setChatMessages(prev => [...prev, { role: 'ai', text: response.data.reply }]);
     } catch (err) {
@@ -131,6 +138,12 @@ function MainPage() {
   };
 
   const handleReset = () => {
+    // 현재 세션의 사용자 채팅 요청을 다음 빌드를 위해 보존
+    const userMessages = chatMessages
+      .filter(m => m.role === 'user')
+      .map(m => m.text);
+    if (userMessages.length > 0) setPrevChatHistory(userMessages);
+
     setDisplayState(DISPLAY_STATES.INITIAL);
     setStudyTarget('');
     setQuestions([]);

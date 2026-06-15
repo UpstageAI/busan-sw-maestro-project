@@ -132,7 +132,9 @@ function StateQuestions({ questions, answers, onAnswerChange, onConfirm, buildEr
                     className={`mp-pref-btn${answers[q.id] === opt.value ? ' selected' : ''}`}
                     onClick={() => onAnswerChange(q.id, opt.value)}
                   >
-                    <span className="material-symbols-outlined">{opt.icon}</span>
+                    <span className="material-symbols-outlined">
+                      {/^[a-z][a-z0-9_]*$/.test(opt.icon) ? opt.icon : 'help_outline'}
+                    </span>
                     <span className="mp-pref-label">{opt.label}</span>
                   </button>
                 ))}
@@ -161,6 +163,15 @@ function StateQuestions({ questions, answers, onAnswerChange, onConfirm, buildEr
       </div>
     </div>
   );
+}
+
+function normalizeMarkdown(md) {
+  return md
+    .replace(/\r\n/g, '\n')                    // CRLF → LF
+    .replace(/\r/g, '\n')                       // CR → LF
+    .replace(/([^\n])(#{1,6} )/g, '$1\n\n$2')  // inline heading → blank line before
+    .replace(/\n(#{1,6} )/g, '\n\n$1')          // single newline before heading → blank line
+    .replace(/\n{3,}/g, '\n\n');                 // collapse excess blank lines
 }
 
 /* ── State: Result ── */
@@ -202,7 +213,9 @@ function StateResult({ studyTarget, curriculumMarkdown, onReset, onCopy, chatOpe
 
       <div className="mp-result-body">
         <div className="mp-markdown" id="mp-markdown-body">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{curriculumMarkdown}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {normalizeMarkdown(curriculumMarkdown)}
+          </ReactMarkdown>
         </div>
       </div>
     </div>
