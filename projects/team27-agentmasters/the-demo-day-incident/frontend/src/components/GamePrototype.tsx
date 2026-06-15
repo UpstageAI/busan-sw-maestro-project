@@ -31,6 +31,8 @@ import {
   type ChatMessage,
   type DeductionResponse,
 } from "@/lib/gameApi";
+import { type AudioScene, type SoundEffect } from "@/lib/audioDirector";
+import { useGameAudio } from "@/lib/useGameAudio";
 
 type Screen = "start" | "intro" | "main" | "final" | "reveal";
 type MainTab = "home" | "clue" | "character" | "note";
@@ -56,6 +58,7 @@ const DEFAULT_ARIA_MESSAGE = "새로운 단서를 확인해보세요.";
 const MAIN_TABS: MainTab[] = ["home", "clue", "character", "note"];
 const INTRO_COMPLETE_STORAGE_KEY = "demo-day-incident-intro-complete";
 const ARIA_MESSAGE_STORAGE_KEY = "mystery-aria-message";
+const ARIA_DIALOGUE_VIEWED_STORAGE_KEY = "mystery-aria-dialogue-viewed";
 const NOTE_STORAGE_KEY = "mystery-note";
 const CHAT_TYPING_INTERVAL_MS = 18;
 const CHAT_TYPING_MAX_TICKS = 110;
@@ -85,8 +88,29 @@ const RECOVERED_TRACE_TRANSLATION_LINES = [
   "권한 롤백 시도 이후 인간 개입 위험이 증가함.",
 ];
 
+type AriaDialogueOverlayState = {
+  messages: string[];
+};
+
 function addUniqueId(ids: number[], id: number) {
   return ids.includes(id) ? ids : [...ids, id];
+}
+
+function getStoredAriaDialogueKeys() {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const storedValue = localStorage.getItem(ARIA_DIALOGUE_VIEWED_STORAGE_KEY);
+    const parsedValue: unknown = storedValue ? JSON.parse(storedValue) : [];
+
+    return Array.isArray(parsedValue)
+      ? parsedValue.filter((value): value is string => typeof value === "string")
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 function deriveUnlockedIds(
@@ -178,6 +202,11 @@ export default function GamePrototype() {
       localStorage.getItem(ARIA_MESSAGE_STORAGE_KEY) ?? DEFAULT_ARIA_MESSAGE
     );
   });
+  const [viewedAriaDialogueKeys, setViewedAriaDialogueKeys] = useState<
+    string[]
+  >(getStoredAriaDialogueKeys);
+  const [ariaDialogueOverlay, setAriaDialogueOverlay] =
+    useState<AriaDialogueOverlayState | null>(null);
   const [note, setNote] = useState(() => {
     if (typeof window === "undefined") {
       return "";
@@ -196,6 +225,19 @@ export default function GamePrototype() {
     useState<DeductionResponse | null>(null);
   const chatTypingTimerRefs = useRef<Record<number, number | undefined>>({});
   const traceProbeQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const audioScene: AudioScene =
+    screen === "start" || screen === "intro"
+      ? "intro"
+      : screen === "final"
+        ? "deduction"
+        : screen === "reveal"
+          ? deductionResult?.result
+            ? "success"
+            : "failure"
+          : mainTab === "character" && selectedCharacter
+            ? "interrogation"
+            : "investigation";
+  const audio = useGameAudio(audioScene);
 
   useEffect(() => {
     localStorage.setItem(NOTE_STORAGE_KEY, note);
@@ -260,11 +302,41 @@ export default function GamePrototype() {
     }
 
     if (target.type === "clue") {
+      if (!unlockedClueIds.includes(target.id)) {
+        audio.play("unlock");
+      }
       setUnlockedClueIds((prev) => addUniqueId(prev, target.id));
       return;
     }
 
+    if (!unlockedCharacterIds.includes(target.id)) {
+      audio.play("unlock");
+    }
     setUnlockedCharacterIds((prev) => addUniqueId(prev, target.id));
+  }
+
+  function showAriaDialogue(messages: string[]) {
+    if (messages.length === 0) {
+      return;
+    }
+
+    audio.play("system");
+    setAriaDialogueOverlay({ messages });
+  }
+
+  function showAriaDialogueOnce(key: string, messages: string[]) {
+    if (messages.length === 0 || viewedAriaDialogueKeys.includes(key)) {
+      return;
+    }
+
+    const nextViewedKeys = [...viewedAriaDialogueKeys, key];
+
+    setViewedAriaDialogueKeys(nextViewedKeys);
+    localStorage.setItem(
+      ARIA_DIALOGUE_VIEWED_STORAGE_KEY,
+      JSON.stringify(nextViewedKeys),
+    );
+    showAriaDialogue(messages);
   }
 
   function clearCharacterTypingTimer(characterId: number) {
@@ -374,8 +446,10 @@ export default function GamePrototype() {
       return;
     }
 
+    audio.play("cardOpen");
     setSelectedClue(clue);
     setAriaMessage(clue.ariaScripts[0] ?? DEFAULT_ARIA_MESSAGE);
+    showAriaDialogueOnce(`clue:${clue.id}`, clue.ariaScripts);
 
     if (!interactedClueIds.includes(clue.id)) {
       setInteractedClueIds((prev) => addUniqueId(prev, clue.id));
@@ -411,6 +485,7 @@ export default function GamePrototype() {
       const result = await gameApi.probeRecoveredTrace();
 
       setAriaMessage(result.message);
+      showAriaDialogue([result.message]);
 
       if (!result.unlocked) {
         return result.message;
@@ -426,6 +501,7 @@ export default function GamePrototype() {
 
       setUnlockedClueIds((prev) => addUniqueId(prev, recoveredTrace.id));
       setInteractedClueIds((prev) => addUniqueId(prev, recoveredTrace.id));
+      audio.play("unlock");
       setSelectedClue(recoveredTrace);
       setAriaMessage(
         recoveredTrace.ariaScripts[3] ??
@@ -438,8 +514,12 @@ export default function GamePrototype() {
       return result.message;
     } catch (error) {
       console.error("[GamePrototype] trace 복구 실패:", error);
-      setAriaMessage("현재 접근 권한으로는 열람할 수 없습니다.");
-      return "현재 접근 권한으로는 열람할 수 없습니다.";
+      const fallbackMessage = "현재 접근 권한으로는 열람할 수 없습니다.";
+
+      setAriaMessage(fallbackMessage);
+      showAriaDialogue([fallbackMessage]);
+
+      return fallbackMessage;
     }
   }
 
@@ -448,9 +528,14 @@ export default function GamePrototype() {
       return;
     }
 
+    audio.play("cardOpen");
     setSelectedCharacter(character);
     setMainTab("character");
     setAriaMessage(character.ariaScripts[0] ?? DEFAULT_ARIA_MESSAGE);
+    showAriaDialogueOnce(
+      `character:${character.id}`,
+      character.ariaScripts,
+    );
 
     if (!interactedCharacterIds.includes(character.id)) {
       setInteractedCharacterIds((prev) => addUniqueId(prev, character.id));
@@ -501,6 +586,7 @@ export default function GamePrototype() {
     const question = chatInput.trim();
     const characterId = selectedCharacter.id;
 
+    audio.play("messageSend");
     setChatInput("");
     setIsSendingChat(true);
     setIsWaitingForChatReply(true);
@@ -523,11 +609,13 @@ export default function GamePrototype() {
       );
 
       setIsWaitingForChatReply(false);
+      audio.play("messageReceive");
       await typeNpcMessageIntoCharacterLog(characterId, npcMessage);
     } catch (error) {
       console.error("[GamePrototype] NPC 답변 생성 실패:", error);
 
       setIsWaitingForChatReply(false);
+      audio.play("error");
       await typeNpcMessageIntoCharacterLog(characterId, {
         speaker: "npc",
         text: "잠시만요. 지금은 제대로 대답하기 어렵습니다.",
@@ -567,6 +655,7 @@ export default function GamePrototype() {
 
   async function submitFinalDeduction() {
     if (!deduction.character) {
+      audio.play("error");
       setDeductionResult({
         result: false,
         comment: "지목 대상을 먼저 선택해야 합니다.",
@@ -576,6 +665,7 @@ export default function GamePrototype() {
     }
 
     if (!isDeductionTargetUnlocked(deduction.character)) {
+      audio.play("error");
       setDeductionResult({
         result: false,
         comment: "아직 해금되지 않은 인물입니다.",
@@ -585,6 +675,7 @@ export default function GamePrototype() {
     }
 
     if (!deduction.content.trim()) {
+      audio.play("error");
       setDeductionResult({
         result: false,
         comment: "추리 내용을 작성해야 합니다.",
@@ -601,9 +692,11 @@ export default function GamePrototype() {
       });
 
       setDeductionResult(result);
+      audio.play(result.result ? "unlock" : "error");
       setScreen("reveal");
     } catch (error) {
       console.error("[GamePrototype] 추리 제출 실패:", error);
+      audio.play("error");
       setDeductionResult({
         result: false,
         comment: "추리 제출 중 문제가 발생했습니다.",
@@ -636,6 +729,7 @@ export default function GamePrototype() {
 
     localStorage.removeItem(INTRO_COMPLETE_STORAGE_KEY);
     localStorage.removeItem(ARIA_MESSAGE_STORAGE_KEY);
+    localStorage.removeItem(ARIA_DIALOGUE_VIEWED_STORAGE_KEY);
     localStorage.removeItem(NOTE_STORAGE_KEY);
 
     setScreen("intro");
@@ -647,6 +741,8 @@ export default function GamePrototype() {
     setUnlockedClueIds([...INITIAL_UNLOCKED_CLUE_IDS]);
     setUnlockedCharacterIds([...INITIAL_UNLOCKED_CHARACTER_IDS]);
     setAriaMessage(DEFAULT_ARIA_MESSAGE);
+    setViewedAriaDialogueKeys([]);
+    setAriaDialogueOverlay(null);
     setNote("");
     setChatInput("");
     setChatLogs({});
@@ -658,7 +754,12 @@ export default function GamePrototype() {
 
   return (
     <main className="min-h-dvh bg-black text-zinc-100">
-      <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col border-x border-zinc-900 bg-[#08090b]">
+      <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col border-x border-zinc-900 bg-[#08090b]">
+        <AudioToggle
+          muted={audio.muted}
+          onToggle={() => audio.setMuted(!audio.muted)}
+        />
+
         {screen === "start" && (
           <StartScreen onStart={() => setScreen("intro")} />
         )}
@@ -667,6 +768,7 @@ export default function GamePrototype() {
           <IntroScreen
             onBack={() => setScreen("start")}
             onNext={completeIntro}
+            onSound={audio.play}
           />
         )}
 
@@ -693,6 +795,7 @@ export default function GamePrototype() {
             onSendChat={sendQuestion}
             onSubmitFinal={() => setScreen("final")}
             onNewStart={startNewGame}
+            onSelect={() => audio.play("select")}
           />
         )}
 
@@ -706,6 +809,7 @@ export default function GamePrototype() {
             toggleDeductionClue={toggleDeductionClue}
             onBack={() => setScreen("main")}
             onSubmitFinal={submitFinalDeduction}
+            onSelect={() => audio.play("select")}
           />
         )}
 
@@ -714,6 +818,7 @@ export default function GamePrototype() {
             deduction={deduction}
             result={deductionResult}
             onRestart={resetGame}
+            onSound={audio.play}
           />
         )}
 
@@ -723,6 +828,13 @@ export default function GamePrototype() {
             clue={selectedClue}
             onClose={() => setSelectedClue(null)}
             onTraceRefClick={probeTraceReference}
+          />
+        )}
+
+        {ariaDialogueOverlay && (
+          <AriaDialogueOverlay
+            messages={ariaDialogueOverlay.messages}
+            onClose={() => setAriaDialogueOverlay(null)}
           />
         )}
       </div>
@@ -786,9 +898,11 @@ function StartScreen({ onStart }: { onStart: () => void }) {
 
 function IntroScreen({
   onNext,
+  onSound,
 }: {
   onBack: () => void;
   onNext: () => void;
+  onSound: (effect: SoundEffect) => void;
 }) {
   const introSteps = [
     {
@@ -863,6 +977,9 @@ function IntroScreen({
         isLastStep={stepIndex === introSteps.length - 1}
         lastStepLabel="클릭해서 조사 시작"
         onAdvance={advanceIntro}
+        onAppear={() =>
+          onSound(currentStep.speaker === "ARIA" ? "system" : "select")
+        }
       />
     </section>
   );
@@ -874,15 +991,19 @@ function CutsceneText({
   isLastStep,
   lastStepLabel = "클릭해서 계속",
   onAdvance,
+  onAppear,
 }: {
   speaker: string;
   text: string;
   isLastStep: boolean;
   lastStepLabel?: string;
   onAdvance: () => void;
+  onAppear?: () => void;
 }) {
   const [visibleLength, setVisibleLength] = useState(0);
   const typingTimerRef = useRef<number | null>(null);
+  const onAppearRef = useRef(onAppear);
+  const didPlayAppearSoundRef = useRef(false);
   const isComplete = visibleLength >= text.length;
   const displayedText = text.slice(0, visibleLength);
 
@@ -892,6 +1013,15 @@ function CutsceneText({
       typingTimerRef.current = null;
     }
   }
+
+  useEffect(() => {
+    if (didPlayAppearSoundRef.current) {
+      return;
+    }
+
+    didPlayAppearSoundRef.current = true;
+    onAppearRef.current?.();
+  }, []);
 
   useEffect(() => {
     clearTypingTimer();
@@ -968,6 +1098,7 @@ function MainScreen({
   onSendChat,
   onSubmitFinal,
   onNewStart,
+  onSelect,
 }: {
   mainTab: MainTab;
   setMainTab: (tab: MainTab) => void;
@@ -990,6 +1121,7 @@ function MainScreen({
   onSendChat: () => void;
   onSubmitFinal: () => void;
   onNewStart: () => void;
+  onSelect: () => void;
 }) {
   const [transitionDirection, setTransitionDirection] = useState<
     "left" | "right"
@@ -1023,6 +1155,7 @@ function MainScreen({
       return;
     }
 
+    onSelect();
     const currentIndex = MAIN_TABS.indexOf(mainTab);
     const nextIndex = MAIN_TABS.indexOf(nextTab);
 
@@ -1900,6 +2033,7 @@ function FinalScreen({
   toggleDeductionClue,
   onBack,
   onSubmitFinal,
+  onSelect,
 }: {
   deduction: DeductionForm;
   interactedClueIds: number[];
@@ -1909,6 +2043,7 @@ function FinalScreen({
   toggleDeductionClue: (clueId: number) => void;
   onBack: () => void;
   onSubmitFinal: () => void;
+  onSelect: () => void;
 }) {
   const availableEvidence = clues.filter((clue) =>
     interactedClueIds.includes(clue.id),
@@ -1950,7 +2085,10 @@ function FinalScreen({
                 <button
                   key={character.id}
                   type="button"
-                  onClick={() => updateDeduction({ character: character.id })}
+                  onClick={() => {
+                    onSelect();
+                    updateDeduction({ character: character.id });
+                  }}
                   className={`rounded-2xl border px-3 py-3 text-left text-sm font-bold ${
                     active
                       ? "border-zinc-100 bg-zinc-100 text-black"
@@ -1982,7 +2120,10 @@ function FinalScreen({
                 <button
                   key={clue.id}
                   type="button"
-                  onClick={() => toggleDeductionClue(clue.id)}
+                  onClick={() => {
+                    onSelect();
+                    toggleDeductionClue(clue.id);
+                  }}
                   className={`w-full rounded-2xl border px-4 py-3 text-left text-sm ${
                     active
                       ? "border-zinc-100 bg-zinc-100 text-black"
@@ -2030,10 +2171,12 @@ function FinalScreen({
 function RevealScreen({
   result,
   onRestart,
+  onSound,
 }: {
   deduction: DeductionForm;
   result: DeductionResponse | null;
   onRestart: () => void;
+  onSound: (effect: SoundEffect) => void;
 }) {
   const isSuccess = result?.result === true;
   const resultSteps = isSuccess
@@ -2126,6 +2269,9 @@ function RevealScreen({
         isLastStep={stepIndex === resultSteps.length - 1}
         lastStepLabel="클릭해서 처음으로"
         onAdvance={advanceResult}
+        onAppear={() =>
+          onSound(currentStep.speaker === "ARIA" ? "system" : "select")
+        }
       />
     </section>
   );
@@ -2141,7 +2287,6 @@ function ClueModal({
   onTraceRefClick: () => Promise<string>;
 }) {
   const [displayedText, setDisplayedText] = useState("");
-  const [traceMessage, setTraceMessage] = useState<string | null>(null);
   const descriptionPanelRef = useRef<HTMLDivElement | null>(null);
   const typingTimerRef = useRef<number | null>(null);
 
@@ -2158,23 +2303,7 @@ function ClueModal({
   }
 
   async function handleTraceRefClick() {
-    const nextTraceMessage = await onTraceRefClick();
-    setTraceMessage(nextTraceMessage);
-  }
-
-  function scrollDescriptionPanelToBottom() {
-    window.requestAnimationFrame(() => {
-      const descriptionPanel = descriptionPanelRef.current;
-
-      if (!descriptionPanel) {
-        return;
-      }
-
-      descriptionPanel.scrollTo({
-        top: descriptionPanel.scrollHeight,
-        behavior: "smooth",
-      });
-    });
+    await onTraceRefClick();
   }
 
   useEffect(() => {
@@ -2195,14 +2324,6 @@ function ClueModal({
       clearTypingTimer();
     };
   }, [clue.description]);
-
-  useEffect(() => {
-    if (!traceMessage) {
-      return;
-    }
-
-    scrollDescriptionPanelToBottom();
-  }, [traceMessage]);
 
   useEffect(() => {
     const descriptionPanel = descriptionPanelRef.current;
@@ -2280,19 +2401,54 @@ function ClueModal({
               <span className="ml-0.5 animate-pulse text-zinc-300">▍</span>
             )}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-          {traceMessage && (
-            <div className="mt-4 rounded-2xl border border-sky-500/30 bg-sky-950/20 p-3">
-              <p className="text-[11px] font-black tracking-[0.18em] text-sky-400">
-                ARIA
-              </p>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-sky-100">
-                {traceMessage}
-              </p>
-            </div>
-          )}
+function AriaDialogueOverlay({
+  messages,
+  onClose,
+}: {
+  messages: string[];
+  onClose: () => void;
+}) {
+  const [messageIndex, setMessageIndex] = useState(0);
+  const currentMessage = messages[messageIndex];
+  const isLastMessage = messageIndex === messages.length - 1;
+
+  function advanceDialogue() {
+    if (isLastMessage) {
+      onClose();
+      return;
+    }
+
+    setMessageIndex((prev) => prev + 1);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex bg-black">
+      <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col justify-center px-4 py-6 min-[390px]:px-5">
+        <div className="relative mx-auto mb-10 h-24 w-24 opacity-80">
+          <Image
+            src={introEvent.ariaLogoImageUrl}
+            alt=""
+            fill
+            unoptimized
+            sizes="96px"
+            className="object-contain"
+          />
         </div>
 
+        <CutsceneText
+          key={messageIndex}
+          speaker="ARIA"
+          text={currentMessage}
+          isLastStep={isLastMessage}
+          lastStepLabel="클릭해서 닫기"
+          onAdvance={advanceDialogue}
+        />
       </div>
     </div>
   );
@@ -2466,6 +2622,29 @@ function MobileHeader({
       <h1 className="text-xl font-black">{title}</h1>
       {subtitle && <p className="mt-1 text-xs text-zinc-500">{subtitle}</p>}
     </header>
+  );
+}
+
+function AudioToggle({
+  muted,
+  onToggle,
+}: {
+  muted: boolean;
+  onToggle: () => void;
+}) {
+  const label = muted ? "사운드 켜기" : "사운드 끄기";
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title={label}
+      aria-label={label}
+      aria-pressed={muted}
+      className="absolute right-3 top-3 z-[100] flex h-9 w-9 items-center justify-center rounded-full border border-zinc-800 bg-black/80 text-sm text-zinc-400 backdrop-blur transition hover:text-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-100 active:scale-95"
+    >
+      <span aria-hidden="true">{muted ? "×" : "♪"}</span>
+    </button>
   );
 }
 
