@@ -23,6 +23,14 @@ def feedback_entry_node(state: dict) -> dict:
     for res in results:
         if res.get("status") == "needs_recheck" and res.get("modified_item"):
             original = reviewables.get(res["item_id"])
+            if original is None:
+                # 원본을 못 찾으면 detect_diff 가 modified 의 모든 필드를 변경으로
+                # 잡아 과잉 후보가 생기므로 해당 수정 건은 생략한다.
+                logger.warning(
+                    "6-3 seam: reviewable 누락 item_id=%s, 수정 건 생략",
+                    res["item_id"],
+                )
+                continue
             modifications.append(
                 {"original": original, "modified": res["modified_item"]}
             )

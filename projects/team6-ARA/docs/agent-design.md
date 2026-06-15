@@ -2,10 +2,10 @@
 
 LangGraph 흐름, LLM 입출력 계약, 모델 선택, 외부 연동(향후)을 담는다.
 
-현재 구현 범위: 6-1 `/analyze/` + 6-2 라우팅/검증/승인(`backend/app/agent/`).
+현재 구현 범위: 6-1 `/analyze/` + 6-2 라우팅/검증/승인 + 6-3 피드백/선호(`backend/app/agent/`).
 그래프의 `analysis_node` 는 `/analyze/` 결과 Item 을 6-2 로 넘기는 연결부이며,
-6-3 피드백/선호는 feat/preferences 에 있고 그래프 연결부(seam) 뒤에 흡수 예정.
-전체 3단계 흐름은 [planning.md](planning.md) 6장 참조.
+6-3 은 feedback_seam 뒤에 노드(feedback_analyze -> preference_interrupt -> preference_store)로
+흡수됐다(2차 HITL). 전체 3단계 흐름은 [planning.md](planning.md) 6장 참조.
 
 ## 1. 통합 토폴로지 - 단일 LangGraph + interrupt HITL
 
@@ -15,14 +15,17 @@ LangGraph 흐름, LLM 입출력 계약, 모델 선택, 외부 연동(향후)을 
 
 ```
 START -> analysis(pass-through) -> tool_selection -> conflict_check
-      -> [reviewables 있으면] request_approval(interrupt) -> execution
-      -> feedback_entry(6-3 seam) -> END
+      -> [reviewables 있으면] request_approval(1차 interrupt) -> execution
+      -> feedback_entry(6-3 seam) -> feedback_analyze
+      -> [후보 있으면] preference_interrupt(2차 interrupt) -> preference_store -> END
+      -> [후보 없으면] END
       ([reviewables 없으면] conflict_check -> feedback_entry 로 바로)
 ```
 
 - 정본: `backend/app/agent/graph.py`(`build_graph`, MemorySaver 포함, lru_cache 로 1회 컴파일).
 - 상태: `AgentState`(TypedDict, total=False, `backend/app/agent/state.py`).
-- HTTP 표현: `POST /run`(시작->interrupt) / `POST /resume`(재개). [api-contract.md](api-contract.md) 참조.
+- HTTP 표현: `POST /run`(시작->1차 interrupt) / `POST /resume`(재개). 2단계 HITL:
+  1차 `awaiting_approval`(decisions), 2차 `awaiting_preference`(preference_choices). [api-contract.md](api-contract.md) 참조.
 - 항목 리스트 단위 분기(type별)는 각 노드 내부 루프로 처리.
 
 ## 2. 노드 입출력 계약
@@ -57,10 +60,23 @@ START -> analysis(pass-through) -> tool_selection -> conflict_check
 
 ### feedback_entry_node (`nodes/feedback_seam.py`) - 6-3 연결부
 - 처리: `final_output`(Result Summary 입력) 구성 + 수정 항목 `(original, modified)` 쌍을 `modifications` 로 정리.
-- 출력: `{final_output, modifications}`
-- **6-3 seam**: 6-3 담당자는 이 노드 **다음에** 노드(Verification -> Feedback Analyzer ->
-  선호 확인 interrupt -> Preference Store)를 붙인다. 현재는 END. `modifications` 는 6-3
-  `/feedback/analyze(original, modified)` 와 맞물린다.
+- 출력: `{final_output, modifications}` -> feedback_analyze 로 이어짐.
+
+### feedback_analyze_node (`nodes/feedback_analyze.py`) - 6-3
+- 입력: `modifications`, `final_output`
+- 처리: 각 수정 쌍을 `detect_diff` -> `generate_candidates` + `determine_pattern_type`(기존 선호 대조).
+  `save_candidate_log` 적재(interrupt 없는 노드라 1회). `verify_result`.
+- 출력: `{candidates, verified}`. 후보 있으면 preference_interrupt, 없으면 END.
+
+### preference_interrupt_node (`nodes/preference.py`) - 2차 HITL
+- 처리: `interrupt({reason:"awaiting_preference", candidates})` 로 정지. resume 값 = PreferenceChoice 리스트.
+  1차 승인 interrupt(reason=awaiting_approval)와 reason 으로 구분.
+- 출력: `{preference_choices}`
+
+### preference_store_node (`nodes/preference.py`) - 6-3
+- 처리: action=save 인 후보만 `save_user_preference` 로 저장(interrupt 없는 별도 노드).
+- 출력: `{confirmed_output}`(saved_fields 등) -> END.
+- 비고: 기존 `/feedback/*`,`/confirm/` 라우터는 보조로 남되, 정본 경로는 이 그래프(/run,/resume)다.
 
 ## 3. 충돌 검사 규칙 (`conflict/rules.py`, LLM 미사용)
 

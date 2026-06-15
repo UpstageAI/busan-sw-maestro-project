@@ -8,7 +8,7 @@ import ReviewScreen from "./components/ReviewScreen";
 import PreferenceModal from "./components/PreferenceModal";
 import SummaryScreen from "./components/SummaryScreen";
 import StoreScreen from "./components/StoreScreen";
-import { resumeRun, analyzeFeedback, confirmFeedback } from "./api/analyze";
+import { resumeRun } from "./api/analyze";
 
 const STEPS = [
     { id: "input",      label: "입력",      num: 1 },
@@ -108,11 +108,16 @@ export default function App() {
     const [excluded, setExcluded] = useState([]);
     const [executionResult, setExecutionResult] = useState(null);
     const [preferenceCandidates, setPreferenceCandidates] = useState([]);
-    const [feedbackLogId, setFeedbackLogId] = useState(null);
 
     function handleAnalyzeDone(result, text) {
         setAnalyzeResult(result);
         setRawText(text);
+        // /run 이 검토할 항목 없이 바로 완료된 경우(전부 ignore 등) 승인 단계를 건너뛴다.
+        if (result.run_result?.status === "completed") {
+            setExecutionResult(result.run_result);
+            setStep("summary");
+            return;
+        }
         setStep("review");
     }
 
@@ -121,66 +126,46 @@ export default function App() {
         return cleaned;
     }
 
-    async function handleReviewDone(approvedItems, excludedItems, modifiedPairs) {
+    async function handleReviewDone(approvedItems, excludedItems) {
         setApproved(approvedItems);
         setExcluded(excludedItems);
         setExecutionResult(null);
         setPreferenceCandidates([]);
-        setFeedbackLogId(null);
 
         const sessionId = analyzeResult?.session_id;
-
-        if (sessionId) {
-            // 1. /resume — 승인 결정으로 그래프 재개 및 저장
-            const decisions = [
-                ...approvedItems.map((item, idx) => ({
-                    item_id: item.id || `item-${idx}`,
-                    action: item._modified ? "modify" : "approve",
-                    modified_item: item._modified ? cleanItem(item) : undefined,
-                })),
-                ...excludedItems.map((item, idx) => ({
-                    item_id: item.id || `item-${idx}`,
-                    action: "exclude",
-                })),
-            ];
-            const result = await resumeRun(sessionId, decisions);
-            setExecutionResult(result);
-
-            // 2. /feedback/analyze — 수정 쌍에서 선호 후보 도출
-            if (modifiedPairs?.length > 0) {
-                try {
-                    const allCandidates = [];
-                    let lastLogId = null;
-                    for (const { original, modified } of modifiedPairs) {
-                        const fb = await analyzeFeedback(sessionId, original, modified);
-                        allCandidates.push(...(fb.candidates || []));
-                        lastLogId = fb.log_id;
-                    }
-                    setPreferenceCandidates(allCandidates);
-                    setFeedbackLogId(lastLogId);
-                } catch (e) {
-                    // 피드백 분석 실패는 조용히 무시 (선호 모달은 목데이터로 폴백)
-                }
-            }
+        if (!sessionId) {
+            setStep("summary");
+            return;
         }
 
-        setStep("preference");
+        // 1차 resume — 승인 결정으로 그래프 재개. modify 가 있으면 그래프가
+        // 2차(선호 확인) interrupt 로 정지하며 candidates 를 돌려준다.
+        const decisions = [
+            ...approvedItems.map((item, idx) => ({
+                item_id: item.id || `item-${idx}`,
+                action: item._modified ? "modify" : "approve",
+                modified_item: item._modified ? cleanItem(item) : undefined,
+            })),
+            ...excludedItems.map((item, idx) => ({
+                item_id: item.id || `item-${idx}`,
+                action: "exclude",
+            })),
+        ];
+        const result = await resumeRun(sessionId, { decisions });
+        setExecutionResult(result);
+
+        if (result.status === "awaiting_preference") {
+            setPreferenceCandidates(result.candidates || []);
+            setStep("preference");
+        } else {
+            // 수정 항목이 없어 선호 후보가 없으면 그래프가 바로 완료된다.
+            setStep("summary");
+        }
     }
 
-    async function handlePreferenceDone(savedCandidates) {
-        // 저장할 후보가 있으면 /feedback/confirm 호출
-        if (feedbackLogId && savedCandidates?.length > 0) {
-            try {
-                await confirmFeedback(
-                    analyzeResult?.session_id,
-                    feedbackLogId,
-                    "save",
-                    savedCandidates,
-                );
-            } catch (e) {
-                // 선호 저장 실패는 조용히 무시
-            }
-        }
+    function handlePreferenceDone(result) {
+        // PreferenceModal 이 2차 resume(preference_choices)까지 수행한 뒤 결과를 넘긴다.
+        if (result) setExecutionResult(result);
         setStep("summary");
     }
 
@@ -192,7 +177,6 @@ export default function App() {
         setExcluded([]);
         setExecutionResult(null);
         setPreferenceCandidates([]);
-        setFeedbackLogId(null);
     }
 
     return (
@@ -238,6 +222,7 @@ export default function App() {
                     )}
                     {step === "preference" && (
                         <PreferenceModal
+                            sessionId={analyzeResult?.session_id}
                             candidates={preferenceCandidates}
                             onDone={handlePreferenceDone}
                         />

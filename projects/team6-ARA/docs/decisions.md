@@ -35,10 +35,41 @@
 - **seed는 데모 전용**: `POST /mock/seed` / 테스트 fixture에서만 실행. 일반 요청 경로
   자동 실행 금지("저장 전 사용자 승인" 제약과 구분되는 시연용 시스템 데이터).
 
+## 2026-06-08 - 저장된 선호 재주입(D3) 연결
+
+- **`load_context()` 가 6-3 `feedback.db` 의 `load_user_preferences()` 를 호출**해 저장된
+  선호를 `ContextBundle.preferences` 로 채운다. 그동안 stub(빈 컨텍스트)이라 저장만 되고
+  분석에 반영되지 않던 경로(D3)를 연결. 읽기 함수/프롬프트 주입점은 이미 준비돼 있었고,
+  비어있던 `load_context()` 만 채웠다.
+- **선호 로드 실패는 분석을 막지 않는다**: DB 오류 시 빈 선호로 폴백(WARNING 로그)하고
+  분석을 계속 진행한다. 선호가 실제로 주입될 때만 INFO 로그(시연 영상용 분기 기록).
+- **후속(같은 브랜치에서 구현 완료)**: 기존 항목 요약 주입, Guideline(D4) JSON 주입,
+  `_postprocess` 선호 코드 보정까지 이어서 채웠다. Context Loader stub 전반이 실데이터로 연결됨.
+
+## 2026-06-08 - _postprocess 선호 코드 보정(이중 안전장치)
+
+- LLM 출력(`AnalyzeResult.items`)을 코드가 한 번 더 검사해 저장된 선호대로 강제 치환한다.
+  프롬프트 주입(D3)은 확률적이라 가끔 무시되므로, 코드 후보정으로 결정적 보장을 더한다.
+- 필드값은 `model_dump(mode="json")` 기준으로 비교/치환하고 `Item.model_validate` 로 재검증해
+  date/enum 타입을 강제한다(model_copy 의 무검증 치환 회피).
+
 ## 미해결
 
 - (없음)
 
 ## 프롬프트 변경 로그
 
-작성 예정(다음 단계).
+### 2026-06-08 - Solar 시스템 프롬프트: User Preference 반영 규칙 추가
+
+- `app/llm/solar.py` `_SYSTEM` 에 규칙 1줄 추가. User Preference 가 주어지면 같은 field 에서
+  입력이 해당 original_pattern 상황일 때 과거 선택값(preferred)을 기본값으로 반영하되,
+  입력에 명시적 값이 있으면 입력을 우선하도록 명시.
+- 배경: 선호가 프롬프트(human 메시지)에 실리고는 있었으나 활용 지시가 없어 LLM 이 무시할 수
+  있었다. 재주입(D3) 연결과 함께 실제 반영되도록 규칙화.
+
+### 2026-06-08 - Solar 시스템 프롬프트: Guideline 반영 규칙 추가
+
+- `app/llm/solar.py` `_SYSTEM` 에 규칙 1줄 추가. Guideline 이 주어지면 분석/분류 시 그 지침을
+  따르되 입력과 충돌하면 입력을 우선하도록 명시.
+- 배경: D4 지침을 `guidelines.json` 으로 주입(`load_context`)하면서, User Preference 와 같은
+  이유로 활용 지시를 프롬프트에 명시.

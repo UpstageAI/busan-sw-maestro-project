@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import styled from "styled-components";
 import { analyzeText, runItems } from "../api/analyze";
 import { Card, Btn, BtnRow, ScreenHead, StepNum, ScreenTitle, ScreenSub } from "../styles/common";
@@ -36,22 +36,65 @@ function flattenRunResult(analysisResult, runResult) {
     };
 }
 
+function getStageLabel(progress) {
+    if (progress < 40) return "텍스트 분석 중…";
+    if (progress < 75) return "항목 분류 중…";
+    if (progress < 92) return "라우팅 처리 중…";
+    if (progress < 100) return "충돌 검사 중…";
+    return "완료";
+}
+
 export default function InputScreen({ onAnalyzeDone }) {
     const [text, setText] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [progress, setProgress] = useState(0);
+    const intervalRef = useRef(null);
+
+    function startFakeProgress() {
+        setProgress(5);
+        intervalRef.current = setInterval(() => {
+            setProgress((prev) => {
+                if (prev >= 99) return prev;
+                // 99에 가까울수록 느려짐
+                const increment = (99 - prev) * 0.035;
+                return Math.min(prev + increment, 99);
+            });
+        }, 200);
+    }
+
+    function stopFakeProgress() {
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+        }
+    }
+
+    useEffect(() => {
+        return () => stopFakeProgress();
+    }, []);
 
     async function handleAnalyze() {
         if (!text.trim()) return;
         setLoading(true);
         setError(null);
+        startFakeProgress();
+
         try {
             const sessionId = newSessionId();
             const result = await analyzeText(text, getTodayKST());
             const runResult = await runItems(sessionId, result.items || [], text);
+
+            // 완료 시 100%로 snap 후 페이지 전환
+            stopFakeProgress();
+            setProgress(100);
+            await new Promise((r) => setTimeout(r, 500));
+
             const routedResult = flattenRunResult(result, runResult);
             onAnalyzeDone(routedResult, text);
         } catch (e) {
+            stopFakeProgress();
+            setProgress(0);
             setError("분석에 실패했습니다. 백엔드 서버가 실행 중인지 확인하세요.");
         } finally {
             setLoading(false);
@@ -78,6 +121,7 @@ export default function InputScreen({ onAnalyzeDone }) {
                     value={text}
                     onChange={(e) => setText(e.target.value)}
                     rows={8}
+                    disabled={loading}
                 />
                 <CharCount>{text.length}자</CharCount>
 
@@ -85,9 +129,24 @@ export default function InputScreen({ onAnalyzeDone }) {
                     <Btn $primary onClick={handleAnalyze} disabled={loading || !text.trim()}>
                         {loading ? "분석 중…" : "분석 실행"}
                     </Btn>
-                    <Btn $ghost onClick={() => setText(SAMPLE_TEXT)}>샘플 불러오기</Btn>
-                    <Btn $ghost onClick={() => setText("")}>비우기</Btn>
+                    <Btn $ghost onClick={() => setText(SAMPLE_TEXT)} disabled={loading}>샘플 불러오기</Btn>
+                    <Btn $ghost onClick={() => setText("")} disabled={loading}>비우기</Btn>
                 </BtnRow>
+
+                {loading && (
+                    <ProgressWrap>
+                        <ProgressHeader>
+                            <ProgressLabel>
+                                <Spinner />
+                                {getStageLabel(progress)}
+                            </ProgressLabel>
+                            <ProgressPct>{Math.floor(progress)}%</ProgressPct>
+                        </ProgressHeader>
+                        <ProgressTrack>
+                            <ProgressFill $progress={progress} />
+                        </ProgressTrack>
+                    </ProgressWrap>
+                )}
 
                 {error && <ErrorBox>{error}</ErrorBox>}
             </Card>
@@ -166,4 +225,60 @@ const ErrorBox = styled.div`
     padding: 10px 13px;
     color: ${theme.warn};
     font-size: 13px;
+`;
+
+const ProgressWrap = styled.div`
+    margin-top: 16px;
+`;
+
+const ProgressHeader = styled.div`
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+`;
+
+const ProgressLabel = styled.span`
+    font-size: 13px;
+    color: ${theme.ink2};
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+`;
+
+const Spinner = styled.span`
+    width: 14px;
+    height: 14px;
+    border: 2px solid ${theme.hair};
+    border-top-color: ${theme.ink};
+    border-radius: 50%;
+    display: inline-block;
+    animation: spin 0.7s linear infinite;
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+`;
+
+const ProgressPct = styled.span`
+    font-size: 12px;
+    color: ${theme.muted};
+`;
+
+const ProgressTrack = styled.div`
+    width: 100%;
+    height: 8px;
+    background: ${theme.panel2};
+    border-radius: 99px;
+    border: 1.5px solid ${theme.hair};
+    overflow: hidden;
+`;
+
+const ProgressFill = styled.div`
+    height: 100%;
+    width: ${({ $progress }) => $progress}%;
+    background: ${theme.ink};
+    border-radius: 99px;
+    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 `;

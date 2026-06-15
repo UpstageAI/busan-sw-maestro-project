@@ -27,11 +27,13 @@ export async function runItems(sessionId, items, rawInput) {
     return res.json();
 }
 
-export async function resumeRun(sessionId, decisions) {
+// 단일 그래프 재개. 1차(승인)는 { decisions }, 2차(선호 확인)는 { preference_choices }.
+// 그래프가 현재 정지점(1차/2차 interrupt)에 payload 를 주입한다.
+export async function resumeRun(sessionId, payload) {
     const res = await fetch(`${API_URL}/resume`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, decisions }),
+        body: JSON.stringify({ session_id: sessionId, ...payload }),
     });
     if (!res.ok) throw new Error("승인 실행 실패");
     return res.json();
@@ -40,25 +42,5 @@ export async function resumeRun(sessionId, decisions) {
 export async function fetchStorage(kind) {
     const res = await fetch(`${API_URL}/storage/${kind}`);
     if (!res.ok) throw new Error("저장소 조회 실패");
-    return res.json();
-}
-
-export async function analyzeFeedback(sessionId, original, modified) {
-    const res = await fetch(`${API_URL}/feedback/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, original, modified }),
-    });
-    if (!res.ok) throw new Error("피드백 분석 실패");
-    return res.json();
-}
-
-export async function confirmFeedback(sessionId, logId, action, candidates) {
-    const res = await fetch(`${API_URL}/feedback/confirm`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, log_id: logId, action, candidates }),
-    });
-    if (!res.ok) throw new Error("선호 저장 실패");
     return res.json();
 }

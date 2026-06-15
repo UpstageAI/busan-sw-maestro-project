@@ -40,6 +40,7 @@ class LLMItem(BaseModel):
     date: str | None = None          # "YYYY-MM-DD"
     time: str | None = None          # "HH:MM" (KST)
     priority: Priority = "medium"
+    mitigation: str | None = None    # risk 대응 방안 (risk 외에는 null)
     source_sentence: str = ""
     recommended_tool: ToolName | None = None   # 6-1 힌트, 6-2가 확정(D5)
 
